@@ -262,6 +262,45 @@ input:focus-visible {
   letter-spacing: 0.16em;
 }
 
+.join-steps {
+  border-color: rgba(248, 217, 92, 0.44);
+  background: linear-gradient(180deg, rgba(52, 39, 8, 0.26), rgba(18, 13, 4, 0.22));
+}
+
+.steps-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+}
+
+.keyboard-help {
+  display: grid;
+  gap: 12px;
+}
+
+.binding-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.binding-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.binding-key {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.binding-action {
+  color: var(--muted);
+}
+
 .qr-frame {
   display: grid;
   place-items: center;
@@ -414,6 +453,12 @@ input:focus-visible {
 @media (max-width: 720px) {
   .app-shell {
     padding: 16px;
+  }
+
+  .binding-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
   }
 
   .controller-grid {
