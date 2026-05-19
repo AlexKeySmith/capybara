@@ -1,0 +1,9 @@
+export const CELL = 4;
+export const COLS = 360;
+export const ROWS = 160;
+export const WORLD_WIDTH = COLS * CELL;
+export const WORLD_HEIGHT = ROWS * CELL;
+export const GRAVITY = 0.28;
+export const TICK_RATE = 60;
+export const HOST_SLOT = 0;
+export const MAX_PLAYERS = 4;
