@@ -1,0 +1,16 @@
+export const APP_NAME = 'MoleZ Tribute';
+export const APP_TAGLINE = 'A modern browser homage with deterministic physics, touch controllers, and retro arena chaos.';
+export const DEFAULT_FIXTURE = 'classic';
+export const DEFAULT_SEED = 2001;
+export const MAX_REMOTE_PLAYERS = 3;
+export const LOCAL_TRANSPORT = 'local';
+export const RELAY_TRANSPORT = 'relay';
+export const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || '';
+export const DEFAULT_TRANSPORT = SIGNALING_URL ? RELAY_TRANSPORT : LOCAL_TRANSPORT;
+export const PLAYER_LABELS = ['HOST', 'P2', 'P3', 'P4'];
+export const PLAYER_COLORS = ['#f8d95c', '#6fd0ff', '#7ff7bc', '#ff8cb7'];
+export const REMOTE_HEARTBEAT_MS = 1000;
+export const REMOTE_TIMEOUT_MS = 4000;
+export const STATE_BROADCAST_MS = 180;
+export const INPUT_SEND_MS = 40;
+export const APP_BASE_PATH = import.meta.env.BASE_URL;

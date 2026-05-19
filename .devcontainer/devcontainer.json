@@ -1,0 +1,24 @@
+{
+  "name": "MoleZ Tribute",
+  "image": "mcr.microsoft.com/playwright:v1.54.2-noble",
+  "forwardPorts": [4173],
+  "postCreateCommand": "npm ci && npx playwright install --with-deps chromium",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-playwright.playwright",
+        "dbaeumer.vscode-eslint",
+        "github.copilot",
+        "github.copilot-chat"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "files.exclude": {
+          "dist": true,
+          "playwright-report": true,
+          "test-results": true
+        }
+      }
+    }
+  }
+}
