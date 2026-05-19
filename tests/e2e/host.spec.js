@@ -11,6 +11,14 @@ test('host bootstraps deterministic arena and publishes join information', async
   await expect(page.getByTestId('host-score')).toContainText('Score:');
 });
 
+test('host join sidebar remains visually stable', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'Visual baseline is only maintained for the desktop chromium project.');
+  await page.goto('/?session=visual-host-123&transport=local&fixture=showcase&seed=1337&test=1');
+  await page.waitForFunction(() => Boolean(window.__molez?.host?.ready));
+
+  await expect(page.locator('.sidebar-panel').first()).toHaveScreenshot('host-join-panel.png');
+});
+
 test('controller joins local host and receives an assignment', async ({ browser }) => {
   const context = await browser.newContext();
   const host = await context.newPage();

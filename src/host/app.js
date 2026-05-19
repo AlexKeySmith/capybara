@@ -175,7 +175,12 @@ export async function bootstrapHost(root) {
       swatch.style.color = player.color;
       swatch.style.background = player.color;
       const info = document.createElement('div');
-      info.innerHTML = `<div>${player.name}</div><div class="roster-meta">${player.label} · ${player.controllerId ? 'controller linked' : player.isBot ? 'bot standby' : 'keyboard host'}</div>`;
+      const name = document.createElement('div');
+      name.textContent = player.name;
+      const meta = document.createElement('div');
+      meta.className = 'roster-meta';
+      meta.textContent = `${player.label} · ${player.controllerId ? 'controller linked' : player.isBot ? 'bot standby' : 'keyboard host'}`;
+      info.append(name, meta);
       const hp = document.createElement('div');
       hp.className = 'status-pill';
       hp.textContent = `${Math.max(0, player.hp)} HP`;
@@ -283,7 +288,6 @@ export async function bootstrapHost(root) {
     }
   });
 
-  const pressed = new Set();
   const keyBindings = {
     ArrowLeft: 'left',
     a: 'left',
@@ -304,8 +308,6 @@ export async function bootstrapHost(root) {
     if (!mapped) return;
     event.preventDefault();
     state.hostInput[mapped] = isDown;
-    if (isDown) pressed.add(mapped);
-    else pressed.delete(mapped);
   };
 
   window.addEventListener('keydown', (event) => onKeyChange(event, true));
@@ -321,6 +323,10 @@ export async function bootstrapHost(root) {
 
   resetButton.addEventListener('click', () => {
     state.simulation.reset({ seed: state.seed, fixture: query.fixture });
+    for (const [controllerId, peer] of state.peers.entries()) {
+      const slot = state.simulation.assignController(controllerId, peer.name);
+      peer.slot = slot;
+    }
     renderRoster();
     broadcastState(true);
   });

@@ -206,6 +206,7 @@ export async function bootstrapController(root) {
 
   const inputInterval = window.setInterval(sendInput, INPUT_SEND_MS);
   const heartbeatInterval = window.setInterval(() => {
+    if (state.assignedSlot === null) sendJoin();
     transport.send(createMessage('heartbeat', { sessionId }));
   }, REMOTE_HEARTBEAT_MS);
 

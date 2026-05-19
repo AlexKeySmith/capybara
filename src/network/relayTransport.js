@@ -22,7 +22,7 @@ export function createRelayTransport({ sessionId, role, clientId, signalingUrl }
         url.searchParams.set('clientId', clientId);
         url.searchParams.set('role', role);
 
-        socket = new WebSocket(url);
+        socket = new WebSocket(url.toString());
         socket.addEventListener('open', () => {
           isOpen = true;
           socket.send(JSON.stringify(createMessage('subscribe', { sessionId, clientId, role })));
