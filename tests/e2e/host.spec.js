@@ -8,6 +8,8 @@ test('host bootstraps deterministic arena and publishes join information', async
   await expect(page.getByTestId('host-transport')).toContainText('LOCAL');
   await expect(page.getByTestId('session-code')).toContainText('TESTHOST');
   await expect(page.getByTestId('join-url')).toContainText('/controller/');
+  await expect(page.getByTestId('join-steps')).toContainText('Arcade quick join');
+  await expect(page.getByTestId('keyboard-help')).toContainText('Keyboard controls');
   await expect(page.getByTestId('host-score')).toContainText('Score:');
 });
 

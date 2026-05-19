@@ -7,6 +7,7 @@ import {
   APP_NAME,
   APP_TAGLINE,
   DEFAULT_TRANSPORT,
+  MAX_REMOTE_PLAYERS,
   REMOTE_HEARTBEAT_MS,
   REMOTE_TIMEOUT_MS,
   STATE_BROADCAST_MS,
@@ -83,13 +84,21 @@ export async function bootstrapHost(root) {
             <div class="card">
               <div class="meta-label">Session code</div>
               <div class="code-value" data-testid="session-code">${shortCode(sessionId)}</div>
-              <div class="helper-text">Share the controller URL or the QR code. The GUID remains stable in the host URL for reproducible test runs.</div>
+              <div class="helper-text">Share this code, URL, or QR to let players join. Up to ${MAX_REMOTE_PLAYERS} controllers can join instantly.</div>
             </div>
             <div class="card">
               <div class="meta-label">Controller URL</div>
               <div class="join-url" data-testid="join-url"></div>
             </div>
             <div class="qr-frame"><canvas data-testid="join-qr" width="160" height="160"></canvas></div>
+            <div class="card join-steps" data-testid="join-steps">
+              <div class="meta-label">Arcade quick join</div>
+              <ol class="steps-list">
+                <li>Scan QR or open controller URL.</li>
+                <li>Enter call sign and auto-join.</li>
+                <li>Repeat on more phones for P3 and P4.</li>
+              </ol>
+            </div>
           </div>
         </section>
 
@@ -120,6 +129,16 @@ export async function bootstrapHost(root) {
           </div>
           <div class="sidebar-body">
             <ul class="roster-list" data-testid="roster-list"></ul>
+            <div class="card keyboard-help" data-testid="keyboard-help">
+              <div class="meta-label">Keyboard controls (host)</div>
+              <div class="binding-grid">
+                <div class="binding-row"><span class="binding-key">A / D or ← / →</span><span class="binding-action">Move</span></div>
+                <div class="binding-row"><span class="binding-key">W / S or ↑ / ↓</span><span class="binding-action">Aim</span></div>
+                <div class="binding-row"><span class="binding-key">Space</span><span class="binding-action">Jump</span></div>
+                <div class="binding-row"><span class="binding-key">F</span><span class="binding-action">Fire</span></div>
+                <div class="binding-row"><span class="binding-key">G</span><span class="binding-action">Grapple</span></div>
+              </div>
+            </div>
             <div class="actions-row">
               <button type="button" data-action="reset">Reset arena</button>
               <button type="button" data-action="copy">Copy join link</button>
