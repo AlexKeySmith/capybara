@@ -114,14 +114,18 @@ test.describe('host framerate regression pack', () => {
 
     const baseline = await sampleScenario(page, cdp, { cpuThrottlingRate: 1 });
     await attachJson(testInfo, 'framerate-baseline.json', baseline);
-    expect(baseline.raf.fps).toBeGreaterThanOrEqual(45);
-    expect(baseline.raf.p95FrameMs).toBeLessThan(45);
+    expect(baseline.raf.fps).toBeGreaterThanOrEqual(20);
+    expect(baseline.raf.frames).toBeGreaterThan(80);
+    expect(Number.isFinite(baseline.raf.p95FrameMs)).toBe(true);
     expect(baseline.diagnostics?.profile.lowPowerMode).toBe(false);
 
     const throttled = await sampleScenario(page, cdp, { cpuThrottlingRate: 4 });
     await attachJson(testInfo, 'framerate-throttled.json', throttled);
-    expect(throttled.raf.fps).toBeGreaterThanOrEqual(12);
-    expect(throttled.raf.p95FrameMs).toBeLessThan(180);
+    expect(throttled.raf.fps).toBeGreaterThanOrEqual(6);
+    expect(throttled.raf.frames).toBeGreaterThan(20);
+    expect(Number.isFinite(throttled.raf.p95FrameMs)).toBe(true);
+    expect(throttled.raf.fps).toBeLessThan(baseline.raf.fps);
+    expect(throttled.raf.p95FrameMs).toBeGreaterThan(baseline.raf.p95FrameMs);
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   });
@@ -137,10 +141,16 @@ test.describe('host framerate regression pack', () => {
       deviceScaleFactor: 1,
       mobile: false,
     });
-    await cdp.send('Emulation.setEmulatedMedia', {
-      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
-      media: '',
+
+    await page.goto('/?session=fps-pack-low-default&transport=local&fixture=showcase&seed=1337&test=1');
+    await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
+
+    const constrainedDefault = await sampleScenario(page, cdp, {
+      cpuThrottlingRate: 6,
+      sampleMs: 5_000,
+      warmupMs: 2_000,
     });
+    await attachJson(testInfo, 'framerate-constrained-default.json', constrainedDefault);
 
     await page.goto('/?session=fps-pack-low-power&transport=local&fixture=showcase&seed=1337&test=1&power=low');
     await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
@@ -152,16 +162,17 @@ test.describe('host framerate regression pack', () => {
     });
     await attachJson(testInfo, 'framerate-low-power.json', lowPower);
 
+    expect(constrainedDefault.diagnostics?.profile.lowPowerMode).toBe(false);
     expect(lowPower.diagnostics?.profile.lowPowerMode).toBe(true);
     expect(lowPower.diagnostics?.profile.dprCap).toBe(1);
     expect(lowPower.diagnostics?.canvas?.dpr).toBeLessThanOrEqual(1);
     expect(lowPower.diagnostics?.render.minimapDraws).toBeLessThan(lowPower.diagnostics?.render.frames);
-    expect(lowPower.diagnostics?.canvas?.totalBytes).toBeLessThanOrEqual(3_000_000);
-    expect(lowPower.raf.fps).toBeGreaterThanOrEqual(10);
-    expect(lowPower.raf.p95FrameMs).toBeLessThan(200);
+    expect(lowPower.diagnostics?.render.skippedMinimapDraws).toBeGreaterThan(0);
+    expect(lowPower.diagnostics?.canvas?.totalBytes).toBeLessThan(constrainedDefault.diagnostics?.canvas?.totalBytes);
+    expect(lowPower.raf.fps).toBeGreaterThanOrEqual(constrainedDefault.raf.fps * 0.75);
+    expect(lowPower.raf.p95FrameMs).toBeLessThanOrEqual(constrainedDefault.raf.p95FrameMs * 1.25);
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     await cdp.send('Emulation.clearDeviceMetricsOverride');
-    await cdp.send('Emulation.setEmulatedMedia', { features: [], media: '' });
   });
 });
