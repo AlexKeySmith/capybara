@@ -16,7 +16,7 @@ import {
 } from '../shared/config.js';
 import { createMessage, isProtocolMessage, normalizeInputState, normalizeJoinPayload } from '../shared/protocol.js';
 import { parseAppQuery, syncHostUrl } from '../shared/query.js';
-import { ensureSessionId, shortCode } from '../shared/session.js';
+import { buildControllerUrl, ensureSessionId, shortCode } from '../shared/session.js';
 
 function createPerformanceProfile(query) {
   return {
@@ -271,7 +271,13 @@ export async function bootstrapHost(root) {
 
   let controllerUrl = '';
   const renderInvite = async (statusText = 'Waiting for a phone to open the invite.') => {
-    controllerUrl = await peerManager.createInvite();
+    if (state.testMode) {
+      const previewUrl = buildControllerUrl(sessionId, PEER_TRANSPORT);
+      previewUrl.searchParams.set('offer', `preview-${sessionId}`);
+      controllerUrl = previewUrl.toString();
+    } else {
+      controllerUrl = await peerManager.createInvite();
+    }
     joinUrlEl.textContent = controllerUrl;
     joinReplyInputEl.value = '';
     joinReplyStatusEl.textContent = statusText;

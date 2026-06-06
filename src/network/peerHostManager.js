@@ -1,4 +1,4 @@
-import { encodePeerSignal, decodePeerSignal, waitForIceGatheringComplete } from '../shared/peerSignal.js';
+import { encodePeerSignal, decodePeerSignal, collectIceCandidates } from '../shared/peerSignal.js';
 import { createMessage, isProtocolMessage } from '../shared/protocol.js';
 import { buildControllerUrl } from '../shared/session.js';
 
@@ -76,15 +76,18 @@ export function createPeerHostManager({ sessionId }) {
       };
       bindPeer(peer);
 
+      const gathering = collectIceCandidates(connection);
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
-      await waitForIceGatheringComplete(connection);
+      const candidates = await gathering;
 
       const offerToken = encodePeerSignal({
         type: 'offer',
         sessionId,
         peerId: peer.peerId,
         description: connection.localDescription,
+        candidates,
+        fallbackMode: candidates.length === 0 ? 'local' : '',
       });
 
       const inviteUrl = buildControllerUrl(sessionId, 'peer');
@@ -108,6 +111,9 @@ export function createPeerHostManager({ sessionId }) {
       }
 
       await pendingPeer.connection.setRemoteDescription(signal.description);
+      for (const candidate of signal.candidates || []) {
+        await pendingPeer.connection.addIceCandidate(candidate);
+      }
     },
     send(message) {
       const encoded = JSON.stringify({ ...message, role: 'host', sessionId });

@@ -48,22 +48,28 @@ export function decodePeerSignal(token) {
   return payload;
 }
 
-export async function waitForIceGatheringComplete(connection, timeoutMs = 4000) {
-  if (connection.iceGatheringState === 'complete') return;
+export async function collectIceCandidates(connection, timeoutMs = 12000) {
+  const candidates = [];
 
   await new Promise((resolve) => {
     let settled = false;
     const finish = () => {
       if (settled) return;
       settled = true;
-      connection.removeEventListener('icegatheringstatechange', onChange);
+      connection.removeEventListener('icecandidate', onCandidate);
       window.clearTimeout(timeoutId);
       resolve();
     };
-    const onChange = () => {
-      if (connection.iceGatheringState === 'complete') finish();
+    const onCandidate = (event) => {
+      if (!event.candidate) {
+        finish();
+        return;
+      }
+      candidates.push(event.candidate.toJSON());
     };
     const timeoutId = window.setTimeout(finish, timeoutMs);
-    connection.addEventListener('icegatheringstatechange', onChange);
+    connection.addEventListener('icecandidate', onCandidate);
   });
+
+  return candidates;
 }

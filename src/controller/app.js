@@ -231,9 +231,10 @@ export async function bootstrapController(root) {
   });
 
   await transport.connect();
-  if (transport.mode === 'peer') {
+  const pendingAnswer = transport.getPendingAnswer?.() || '';
+  if (transport.mode === 'peer' && pendingAnswer) {
     replyCardEl.hidden = false;
-    replyTokenEl.value = transport.getPendingAnswer?.() || '';
+    replyTokenEl.value = pendingAnswer;
     setStatus('Return reply code to host', 'status-warning');
   } else {
     setStatus('Joining…', 'status-warning');

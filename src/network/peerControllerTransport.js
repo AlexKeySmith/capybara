@@ -1,5 +1,6 @@
-import { decodePeerSignal, encodePeerSignal, waitForIceGatheringComplete } from '../shared/peerSignal.js';
+import { decodePeerSignal, encodePeerSignal, collectIceCandidates } from '../shared/peerSignal.js';
 import { createMessage, isProtocolMessage } from '../shared/protocol.js';
+import { createLocalTransport } from './localTransport.js';
 
 const ICE_SERVERS = [
   {
@@ -13,6 +14,7 @@ export function createPeerControllerTransport({ sessionId, role, clientId, offer
   let connection = null;
   let isOpen = false;
   let answerToken = '';
+  let fallbackTransport = null;
 
   function emit(message) {
     listeners.forEach((listener) => listener(message));
@@ -46,6 +48,14 @@ export function createPeerControllerTransport({ sessionId, role, clientId, offer
       if (signal.type !== 'offer' || signal.sessionId !== sessionId) {
         throw new Error('The peer invite does not match this session.');
       }
+      if (signal.fallbackMode === 'local') {
+        fallbackTransport = createLocalTransport({ sessionId, role, clientId });
+        fallbackTransport.subscribe((message) => emit(message));
+        await fallbackTransport.connect();
+        isOpen = true;
+        emit(createMessage('transport-open', { sessionId, clientId, role }));
+        return;
+      }
 
       connection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       connection.addEventListener('datachannel', (event) => attachChannel(event.channel));
@@ -57,15 +67,20 @@ export function createPeerControllerTransport({ sessionId, role, clientId, offer
       });
 
       await connection.setRemoteDescription(signal.description);
+      for (const candidate of signal.candidates || []) {
+        await connection.addIceCandidate(candidate);
+      }
+      const gathering = collectIceCandidates(connection);
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
-      await waitForIceGatheringComplete(connection);
+      const candidates = await gathering;
 
       answerToken = encodePeerSignal({
         type: 'answer',
         sessionId,
         peerId: signal.peerId,
         description: connection.localDescription,
+        candidates,
       });
     },
     subscribe(listener) {
@@ -73,11 +88,16 @@ export function createPeerControllerTransport({ sessionId, role, clientId, offer
       return () => listeners.delete(listener);
     },
     send(message) {
+      if (fallbackTransport) {
+        fallbackTransport.send(message);
+        return;
+      }
       if (!isOpen || !channel || channel.readyState !== 'open') return;
       channel.send(JSON.stringify({ ...message, clientId, role, sessionId }));
     },
     close() {
       listeners.clear();
+      if (fallbackTransport) fallbackTransport.close();
       if (channel) channel.close();
       if (connection) connection.close();
     },

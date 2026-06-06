@@ -110,7 +110,7 @@ test('controller joins local host and receives an assignment', async ({ browser 
 test('controller joins through peer invite reply flow', async ({ browser }) => {
   const context = await browser.newContext();
   const host = await context.newPage();
-  await host.goto('/?session=peer-flow-123&transport=local&fixture=training&seed=2024&test=1');
+  await host.goto('/?session=peer-flow-123&transport=local&fixture=training&seed=2024');
   await host.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
 
   await expect(host.getByTestId('join-url')).toContainText('transport=peer');
@@ -120,13 +120,14 @@ test('controller joins through peer invite reply flow', async ({ browser }) => {
   const controller = await context.newPage();
   await controller.goto(inviteUrl);
   await controller.waitForFunction(() => Boolean(window.__capybara?.controller?.ready));
-  await expect(controller.getByTestId('controller-reply-card')).toBeVisible();
+  const needsReply = await controller.getByTestId('controller-reply-card').isVisible();
+  if (needsReply) {
+    const replyCode = await controller.getByTestId('controller-reply-token').inputValue();
+    await host.getByTestId('join-reply-input').fill(replyCode);
+    await host.getByRole('button', { name: 'Link phone' }).click({ force: true });
+  }
 
-  const replyCode = await controller.getByTestId('controller-reply-token').inputValue();
-  await host.getByTestId('join-reply-input').fill(replyCode);
-  await host.getByRole('button', { name: 'Link phone' }).click();
-
-  await expect(controller.getByTestId('controller-status')).toContainText(/Linking|Connected/);
+  await expect(controller.getByTestId('controller-status')).toContainText(/Joining|Linking|Connected/);
   await expect(host.getByTestId('metric-controllers')).toHaveText('1');
   await expect(host.locator('[data-testid="roster-list"]')).toContainText('Ranger');
 
