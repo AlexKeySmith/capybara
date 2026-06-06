@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { MolezSimulation } from '../../src/game/simulation.js';
+import { CapybaraSimulation } from '../../src/game/simulation.js';
 import { TICK_RATE, WORLD_HEIGHT, WORLD_WIDTH } from '../../src/game/constants.js';
 
-describe('MolezSimulation dynamics', () => {
+describe('CapybaraSimulation dynamics', () => {
   test('counts down round time and stops the match at zero', () => {
-    const simulation = new MolezSimulation({ seed: 1337, fixture: 'training' });
+    const simulation = new CapybaraSimulation({ seed: 1337, fixture: 'training' });
 
     simulation.timeLeft = 1 / TICK_RATE;
     simulation.tickFrame({}, 1024);
@@ -15,7 +15,7 @@ describe('MolezSimulation dynamics', () => {
   });
 
   test('assigns and releases remote controllers on non-host slots', () => {
-    const simulation = new MolezSimulation({ seed: 2024, fixture: 'classic' });
+    const simulation = new CapybaraSimulation({ seed: 2024, fixture: 'classic' });
 
     const slot = simulation.assignController('controller-1', 'Ace');
     expect(slot).toBe(1);
@@ -31,7 +31,7 @@ describe('MolezSimulation dynamics', () => {
   });
 
   test('applies projectile damage and score updates on hit', () => {
-    const simulation = new MolezSimulation({ seed: 99, fixture: 'training' });
+    const simulation = new CapybaraSimulation({ seed: 99, fixture: 'training' });
     const target = simulation.players[1];
     const spawn = simulation.safeSpawn(WORLD_WIDTH * 0.3);
 
@@ -57,7 +57,7 @@ describe('MolezSimulation dynamics', () => {
   });
 
   test('creates a grapple rope when the hook hits terrain', () => {
-    const simulation = new MolezSimulation({ seed: 4242, fixture: 'classic' });
+    const simulation = new CapybaraSimulation({ seed: 4242, fixture: 'classic' });
     const host = simulation.players[0];
 
     host.x = WORLD_WIDTH * 0.35;

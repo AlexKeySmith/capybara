@@ -1,5 +1,5 @@
 {
-  "name": "MoleZ Tribute",
+  "name": "Capybara",
   "image": "mcr.microsoft.com/playwright:v1.54.2-noble",
   "forwardPorts": [4173],
   "postCreateCommand": "npm ci && npx playwright install --with-deps chromium",

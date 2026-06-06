@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import { MolezSimulation } from '../game/simulation.js';
+import { CapybaraSimulation } from '../game/simulation.js';
 import { resolveFixture } from '../game/fixtures.js';
 import { drawSimulation, resizeCanvas } from '../game/render.js';
 import { createTransport, describeTransport } from '../network/createTransport.js';
@@ -35,7 +35,7 @@ export async function bootstrapHost(root) {
     testMode: query.testMode,
     transportMode: transport.mode,
     hostInput: normalizeInputState({}),
-    simulation: new MolezSimulation({ seed: query.seed, fixture: query.fixture }),
+    simulation: new CapybaraSimulation({ seed: query.seed, fixture: query.fixture }),
     peers: new Map(),
     controllerAssignments: new Map(),
     lastStateBroadcast: 0,
@@ -381,7 +381,7 @@ export async function bootstrapHost(root) {
 
   state.rafId = requestAnimationFrame(renderFrame);
 
-  window.__molez = {
+  window.__capybara = {
     host: {
       ready: true,
       sessionId,

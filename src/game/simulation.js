@@ -64,7 +64,7 @@ function createPlayer(slot, x, y, isBot) {
   };
 }
 
-export class MolezSimulation {
+export class CapybaraSimulation {
   constructor({ seed, fixture }) {
     this.reset({ seed, fixture });
   }
