@@ -24,7 +24,7 @@ const CONTROL_KEYS = [
 export async function bootstrapController(root) {
   const query = parseAppQuery();
   const sessionId = ensureSessionId(query.sessionId);
-  const preferredName = safePlayerName(query.preferredName || localStorage.getItem('molez.controllerName') || 'Ranger');
+  const preferredName = safePlayerName(query.preferredName || localStorage.getItem('capybara.controllerName') || 'Ranger');
   const clientId = `controller-${crypto.randomUUID()}`;
   const transport = createTransport({
     sessionId,
@@ -115,7 +115,7 @@ export async function bootstrapController(root) {
 
   const sendJoin = () => {
     state.name = safePlayerName(nameInput.value, 'Ranger');
-    localStorage.setItem('molez.controllerName', state.name);
+    localStorage.setItem('capybara.controllerName', state.name);
     transport.send(createMessage('join', {
       sessionId,
       controllerName: state.name,
@@ -210,7 +210,7 @@ export async function bootstrapController(root) {
     transport.send(createMessage('heartbeat', { sessionId }));
   }, REMOTE_HEARTBEAT_MS);
 
-  window.__molez = {
+  window.__capybara = {
     controller: {
       ready: true,
       sessionId,

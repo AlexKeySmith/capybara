@@ -1,7 +1,7 @@
 import { createMessage, isProtocolMessage } from '../shared/protocol.js';
 
 export function createLocalTransport({ sessionId, role, clientId }) {
-  const channel = new BroadcastChannel(`molez:${sessionId}`);
+  const channel = new BroadcastChannel(`capybara:${sessionId}`);
   const listeners = new Set();
 
   channel.addEventListener('message', (event) => {

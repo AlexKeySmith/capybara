@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 
-const repoBase = '/Molez-tribute/';
+const repoBase = '/capybara/';
 
 export default defineConfig(({ command }) => ({
   base: process.env.VITE_BASE_PATH || (command === 'build' && process.env.GITHUB_ACTIONS ? repoBase : '/'),

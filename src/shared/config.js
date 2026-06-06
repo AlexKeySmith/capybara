@@ -1,4 +1,4 @@
-export const APP_NAME = 'MoleZ Tribute';
+export const APP_NAME = 'Capybara';
 export const APP_TAGLINE = 'A modern browser homage with deterministic physics, touch controllers, and retro arena chaos.';
 export const DEFAULT_FIXTURE = 'classic';
 export const DEFAULT_SEED = 2001;

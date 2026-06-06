@@ -1,6 +1,6 @@
 import { safePlayerName, sanitizeSessionId } from './session.js';
 
-export const PROTOCOL_VERSION = 'molez-tribute-1';
+export const PROTOCOL_VERSION = 'capybara-1';
 export const INPUT_KEYS = ['left', 'right', 'aimUp', 'aimDown', 'jump', 'fire', 'grapple', 'ready'];
 
 export function normalizeInputState(input) {

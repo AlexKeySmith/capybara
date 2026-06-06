@@ -1,4 +1,4 @@
-name: Validate and deploy MoleZ Tribute
+name: Validate and deploy Capybara
 
 on:
   pull_request:
