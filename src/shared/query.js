@@ -7,7 +7,6 @@ export function parseAppQuery(search = window.location.search) {
 
   return {
     fixture: params.get('fixture') || DEFAULT_FIXTURE,
-    renderMode: 'webcanvas',
     seed: Number.isFinite(seedValue) ? seedValue : DEFAULT_SEED,
     testMode: params.get('test') === '1',
     sessionId: sanitizeSessionId(params.get('session')),
@@ -16,7 +15,7 @@ export function parseAppQuery(search = window.location.search) {
   };
 }
 
-export function syncHostUrl({ sessionId, transport, fixture, seed, testMode, renderMode }) {
+export function syncHostUrl({ sessionId, transport, fixture, seed, testMode }) {
   const url = new URL(window.location.href);
   url.searchParams.set('session', ensureSessionId(sessionId));
   url.searchParams.set('transport', transport);
@@ -24,7 +23,7 @@ export function syncHostUrl({ sessionId, transport, fixture, seed, testMode, ren
   url.searchParams.set('seed', `${seed}`);
   if (testMode) url.searchParams.set('test', '1');
   else url.searchParams.delete('test');
-  url.searchParams.set('render', renderMode || 'webcanvas');
+  url.searchParams.delete('render');
   url.searchParams.delete('power');
   history.replaceState({}, '', url);
 }

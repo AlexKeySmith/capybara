@@ -1,7 +1,7 @@
 import QRCode from 'qrcode';
 import { CapybaraSimulation } from '../game/simulation.js';
 import { resolveFixture } from '../game/fixtures.js';
-import { drawSimulation, resizeCanvas } from '../game/render.js';
+import { drawSimulationWebCanvas } from '../game/render.js';
 import { createTransport, describeTransport } from '../network/createTransport.js';
 import {
   APP_NAME,
@@ -18,7 +18,7 @@ import { buildControllerUrl, ensureSessionId, shortCode } from '../shared/sessio
 
 function createPerformanceProfile(query) {
   return {
-    name: query.renderMode || 'webcanvas',
+    name: 'webcanvas',
     mainGameRenderer: 'webcanvas',
     dprCap: 2,
     minCanvasHeight: 640,
@@ -61,6 +61,7 @@ export async function bootstrapHost(root) {
       skippedMinimapDraws: 0,
       canvas: null,
     },
+    webcanvasStage: null,
     rafId: 0,
   };
 
@@ -193,7 +194,6 @@ export async function bootstrapHost(root) {
     sessionId,
     transport: query.transport || transport.mode,
     fixture: query.fixture,
-    renderMode: state.performanceProfile.name,
     seed: query.seed,
     testMode: query.testMode,
   });
@@ -416,8 +416,21 @@ export async function bootstrapHost(root) {
       state.performanceProfile.minCanvasHeight,
       Math.min(window.innerHeight - 120, state.performanceProfile.maxCanvasHeight),
     );
-    const ctx = resizeCanvas(canvas, viewportWidth, viewportHeight, state.performanceProfile);
-    const dpr = viewportWidth > 0 ? Number((canvas.width / viewportWidth).toFixed(2)) : 1;
+    const renderResult = drawSimulationWebCanvas(
+      canvas,
+      state.webcanvasStage,
+      minimapCtx,
+      state.simulation,
+      viewportWidth,
+      viewportHeight,
+      {
+        now: time,
+        diagnostics: state.renderDiagnostics,
+        performanceProfile: state.performanceProfile,
+      },
+    );
+    state.webcanvasStage = renderResult.stageSurface;
+    const dpr = Number(renderResult.dpr.toFixed(2));
     state.renderDiagnostics.frames += 1;
     updateCanvasDiagnostics(dpr);
 
@@ -428,11 +441,6 @@ export async function bootstrapHost(root) {
       state.simulation.tickFrame(state.hostInput, viewportWidth);
     }
 
-    drawSimulation(ctx, minimapCtx, state.simulation, viewportWidth, viewportHeight, {
-      now: time,
-      diagnostics: state.renderDiagnostics,
-      performanceProfile: state.performanceProfile,
-    });
     updateHud(false, time);
     renderRoster(false, time);
     broadcastState();

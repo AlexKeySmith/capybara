@@ -108,6 +108,8 @@ test.describe('host framerate regression pack', () => {
 
     await page.goto('/?session=fps-pack-123&transport=local&fixture=showcase&seed=1337&test=1');
     await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
+    const baselineQuery = await page.evaluate(() => window.location.search);
+    expect(baselineQuery).not.toContain('render=');
 
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Performance.enable');
@@ -155,6 +157,9 @@ test.describe('host framerate regression pack', () => {
 
     await page.goto('/?session=fps-pack-webcanvas-legacy-power&transport=local&fixture=showcase&seed=1337&test=1&power=low');
     await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
+    const legacyPowerQuery = await page.evaluate(() => window.location.search);
+    expect(legacyPowerQuery).not.toContain('power=');
+    expect(legacyPowerQuery).not.toContain('render=');
 
     const legacyPowerParam = await sampleScenario(page, cdp, {
       cpuThrottlingRate: 6,

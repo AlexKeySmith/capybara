@@ -12,6 +12,8 @@ test('host bootstraps deterministic arena and publishes join information', async
   await expect(page.getByTestId('keyboard-help')).toContainText('Keyboard controls');
   await expect(page.getByTestId('host-score')).toContainText('Score:');
   await expect(page.getByTestId('host-canvas')).toHaveAttribute('data-renderer', 'webcanvas');
+  const hostQuery = await page.evaluate(() => window.location.search);
+  expect(hostQuery).not.toContain('render=');
 });
 
 test('host join sidebar remains visually stable', async ({ page }, testInfo) => {
