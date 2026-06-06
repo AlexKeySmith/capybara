@@ -1,6 +1,6 @@
-# MoleZ Tribute
+# Capybara
 
-A modern-web tribute to a chaotic early-2000s arena game, rebuilt in pure modern JavaScript for GitHub Pages, fast LLM iteration, and mobile-controller play.
+A modern-web game rebuilt in pure modern JavaScript for GitHub Pages, fast LLM iteration, and mobile-controller play. It remains a tribute to the Molez game I played in the 90s.
 
 ## What is implemented
 
