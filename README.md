@@ -29,10 +29,10 @@ npm run security:audit
 
 - Run `npm run dev` for hot reload.
 - Run `npm run test:e2e` for browser-level validation.
-- Run `npm run test:e2e:framerate` to execute the framerate regression pack (includes CPU-throttled diagnostics plus a simulated low-resource profile).
+- Run `npm run test:e2e:framerate` to execute the framerate regression pack (includes CPU-throttled diagnostics and webcanvas renderer verification).
 - Use deterministic URLs such as:
   - `/?session=test-host-123&transport=local&fixture=showcase&seed=1337&test=1`
-  - `/?session=test-host-123&transport=local&fixture=showcase&seed=1337&test=1&power=low`
+  - `/?session=test-host-123&transport=local&fixture=showcase&seed=1337&test=1`
   - `/controller/?session=test-host-123&transport=local&name=Ace`
 - Playwright captures traces, screenshots, and videos on failure.
 

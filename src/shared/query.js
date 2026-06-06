@@ -4,13 +4,10 @@ import { ensureSessionId, sanitizeSessionId } from './session.js';
 export function parseAppQuery(search = window.location.search) {
   const params = new URLSearchParams(search);
   const seedValue = Number.parseInt(params.get('seed') || `${DEFAULT_SEED}`, 10);
-  const powerMode = params.get('power') === 'low' ? 'low' : 'default';
 
   return {
     fixture: params.get('fixture') || DEFAULT_FIXTURE,
-    lowPowerMode: powerMode === 'low',
     seed: Number.isFinite(seedValue) ? seedValue : DEFAULT_SEED,
-    powerMode,
     testMode: params.get('test') === '1',
     sessionId: sanitizeSessionId(params.get('session')),
     transport: params.get('transport') || DEFAULT_TRANSPORT,
@@ -18,7 +15,7 @@ export function parseAppQuery(search = window.location.search) {
   };
 }
 
-export function syncHostUrl({ sessionId, transport, fixture, seed, testMode, powerMode }) {
+export function syncHostUrl({ sessionId, transport, fixture, seed, testMode }) {
   const url = new URL(window.location.href);
   url.searchParams.set('session', ensureSessionId(sessionId));
   url.searchParams.set('transport', transport);
@@ -26,7 +23,7 @@ export function syncHostUrl({ sessionId, transport, fixture, seed, testMode, pow
   url.searchParams.set('seed', `${seed}`);
   if (testMode) url.searchParams.set('test', '1');
   else url.searchParams.delete('test');
-  if (powerMode === 'low') url.searchParams.set('power', 'low');
-  else url.searchParams.delete('power');
+  url.searchParams.delete('render');
+  url.searchParams.delete('power');
   history.replaceState({}, '', url);
 }

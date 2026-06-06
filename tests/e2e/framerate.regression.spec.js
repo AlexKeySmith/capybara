@@ -108,6 +108,8 @@ test.describe('host framerate regression pack', () => {
 
     await page.goto('/?session=fps-pack-123&transport=local&fixture=showcase&seed=1337&test=1');
     await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
+    const baselineQuery = await page.evaluate(() => window.location.search);
+    expect(baselineQuery).not.toContain('render=');
 
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Performance.enable');
@@ -117,7 +119,8 @@ test.describe('host framerate regression pack', () => {
     expect(baseline.raf.fps).toBeGreaterThanOrEqual(20);
     expect(baseline.raf.frames).toBeGreaterThan(80);
     expect(Number.isFinite(baseline.raf.p95FrameMs)).toBe(true);
-    expect(baseline.diagnostics?.profile.lowPowerMode).toBe(false);
+    expect(baseline.diagnostics?.profile.name).toBe('webcanvas');
+    expect(baseline.diagnostics?.profile.mainGameRenderer).toBe('webcanvas');
 
     const throttled = await sampleScenario(page, cdp, { cpuThrottlingRate: 4 });
     await attachJson(testInfo, 'framerate-throttled.json', throttled);
@@ -130,8 +133,8 @@ test.describe('host framerate regression pack', () => {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   });
 
-  test('applies the low-power profile under a simulated constrained device setup', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'chromium', 'Low-power pack runs only in chromium due CDP diagnostics.');
+  test('keeps webcanvas rendering for the main game area even with legacy power query params', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'Webcanvas diagnostics pack runs only in chromium due CDP diagnostics.');
 
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Performance.enable');
@@ -142,35 +145,37 @@ test.describe('host framerate regression pack', () => {
       mobile: false,
     });
 
-    await page.goto('/?session=fps-pack-low-default&transport=local&fixture=showcase&seed=1337&test=1');
+    await page.goto('/?session=fps-pack-webcanvas-default&transport=local&fixture=showcase&seed=1337&test=1');
     await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
 
-    const constrainedDefault = await sampleScenario(page, cdp, {
+    const defaultProfile = await sampleScenario(page, cdp, {
       cpuThrottlingRate: 6,
       sampleMs: 5_000,
       warmupMs: 2_000,
     });
-    await attachJson(testInfo, 'framerate-constrained-default.json', constrainedDefault);
+    await attachJson(testInfo, 'framerate-webcanvas-default.json', defaultProfile);
 
-    await page.goto('/?session=fps-pack-low-power&transport=local&fixture=showcase&seed=1337&test=1&power=low');
+    await page.goto('/?session=fps-pack-webcanvas-legacy-power&transport=local&fixture=showcase&seed=1337&test=1&power=low');
     await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
+    const legacyPowerQuery = await page.evaluate(() => window.location.search);
+    expect(legacyPowerQuery).not.toContain('power=');
+    expect(legacyPowerQuery).not.toContain('render=');
 
-    const lowPower = await sampleScenario(page, cdp, {
+    const legacyPowerParam = await sampleScenario(page, cdp, {
       cpuThrottlingRate: 6,
       sampleMs: 5_000,
       warmupMs: 2_000,
     });
-    await attachJson(testInfo, 'framerate-low-power.json', lowPower);
+    await attachJson(testInfo, 'framerate-webcanvas-legacy-power.json', legacyPowerParam);
 
-    expect(constrainedDefault.diagnostics?.profile.lowPowerMode).toBe(false);
-    expect(lowPower.diagnostics?.profile.lowPowerMode).toBe(true);
-    expect(lowPower.diagnostics?.profile.dprCap).toBe(1);
-    expect(lowPower.diagnostics?.canvas?.dpr).toBeLessThanOrEqual(1);
-    expect(lowPower.diagnostics?.render.minimapDraws).toBeLessThan(lowPower.diagnostics?.render.frames);
-    expect(lowPower.diagnostics?.render.skippedMinimapDraws).toBeGreaterThan(0);
-    expect(lowPower.diagnostics?.canvas?.totalBytes).toBeLessThan(constrainedDefault.diagnostics?.canvas?.totalBytes);
-    expect(lowPower.raf.fps).toBeGreaterThanOrEqual(constrainedDefault.raf.fps * 0.75);
-    expect(lowPower.raf.p95FrameMs).toBeLessThanOrEqual(constrainedDefault.raf.p95FrameMs * 1.25);
+    expect(defaultProfile.diagnostics?.profile.name).toBe('webcanvas');
+    expect(defaultProfile.diagnostics?.profile.mainGameRenderer).toBe('webcanvas');
+    expect(legacyPowerParam.diagnostics?.profile.name).toBe('webcanvas');
+    expect(legacyPowerParam.diagnostics?.profile.mainGameRenderer).toBe('webcanvas');
+    expect(legacyPowerParam.diagnostics?.profile.dprCap).toBe(defaultProfile.diagnostics?.profile.dprCap);
+    expect(legacyPowerParam.diagnostics?.canvas?.dpr).toBeCloseTo(defaultProfile.diagnostics?.canvas?.dpr ?? 0, 1);
+    expect(defaultProfile.raf.fps).toBeGreaterThanOrEqual(6);
+    expect(legacyPowerParam.raf.fps).toBeGreaterThanOrEqual(6);
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     await cdp.send('Emulation.clearDeviceMetricsOverride');

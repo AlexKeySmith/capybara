@@ -1,7 +1,7 @@
 import QRCode from 'qrcode';
 import { CapybaraSimulation } from '../game/simulation.js';
 import { resolveFixture } from '../game/fixtures.js';
-import { drawSimulation, resizeCanvas } from '../game/render.js';
+import { drawSimulationWebCanvas } from '../game/render.js';
 import { createTransport, describeTransport } from '../network/createTransport.js';
 import {
   APP_NAME,
@@ -16,25 +16,14 @@ import { createMessage, isProtocolMessage, normalizeInputState, normalizeJoinPay
 import { parseAppQuery, syncHostUrl } from '../shared/query.js';
 import { buildControllerUrl, ensureSessionId, shortCode } from '../shared/session.js';
 
-function detectLowPowerMode() {
-  const userAgent = navigator.userAgent || '';
-  const platform = navigator.platform || '';
-  const armDevice = /(arm|aarch64)/i.test(userAgent) || /(arm|aarch64)/i.test(platform);
-  const raspberryPi = /raspberry pi/i.test(userAgent);
-  const lowCoreCount = Number.isFinite(navigator.hardwareConcurrency) && navigator.hardwareConcurrency <= 4;
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-  return raspberryPi || reducedMotion || (armDevice && lowCoreCount);
-}
-
 function createPerformanceProfile(query) {
-  const lowPowerMode = query.lowPowerMode || detectLowPowerMode();
   return {
-    name: lowPowerMode ? 'low' : 'default',
-    lowPowerMode,
-    dprCap: lowPowerMode ? 1 : 2,
-    minCanvasHeight: lowPowerMode ? 480 : 640,
-    maxCanvasHeight: lowPowerMode ? 640 : 820,
-    minimapIntervalMs: lowPowerMode ? 180 : 0,
+    name: 'webcanvas',
+    mainGameRenderer: 'webcanvas',
+    dprCap: 2,
+    minCanvasHeight: 640,
+    maxCanvasHeight: 820,
+    minimapIntervalMs: 0,
   };
 }
 
@@ -72,10 +61,11 @@ export async function bootstrapHost(root) {
       skippedMinimapDraws: 0,
       canvas: null,
     },
+    webcanvasStage: null,
     rafId: 0,
   };
 
-  root.className = `app-shell scanlines${state.performanceProfile.lowPowerMode ? ' performance-low' : ''}`;
+  root.className = 'app-shell scanlines';
   root.dataset.performanceProfile = state.performanceProfile.name;
   root.innerHTML = `
     <div class="layout">
@@ -92,7 +82,7 @@ export async function bootstrapHost(root) {
           </div>
         </div>
         <div class="canvas-wrap">
-          <canvas class="game-canvas" data-testid="host-canvas"></canvas>
+          <canvas class="game-canvas" data-testid="host-canvas" data-renderer="webcanvas"></canvas>
           <div class="canvas-overlay">
             <div class="overlay-stack">
               <div class="overlay-pill" data-testid="host-time">Time: --</div>
@@ -204,7 +194,6 @@ export async function bootstrapHost(root) {
     sessionId,
     transport: query.transport || transport.mode,
     fixture: query.fixture,
-    powerMode: state.performanceProfile.name,
     seed: query.seed,
     testMode: query.testMode,
   });
@@ -427,8 +416,21 @@ export async function bootstrapHost(root) {
       state.performanceProfile.minCanvasHeight,
       Math.min(window.innerHeight - 120, state.performanceProfile.maxCanvasHeight),
     );
-    const ctx = resizeCanvas(canvas, viewportWidth, viewportHeight, state.performanceProfile);
-    const dpr = viewportWidth > 0 ? Number((canvas.width / viewportWidth).toFixed(2)) : 1;
+    const renderResult = drawSimulationWebCanvas(
+      canvas,
+      state.webcanvasStage,
+      minimapCtx,
+      state.simulation,
+      viewportWidth,
+      viewportHeight,
+      {
+        now: time,
+        diagnostics: state.renderDiagnostics,
+        performanceProfile: state.performanceProfile,
+      },
+    );
+    state.webcanvasStage = renderResult.stageSurface;
+    const dpr = Number(renderResult.dpr.toFixed(2));
     state.renderDiagnostics.frames += 1;
     updateCanvasDiagnostics(dpr);
 
@@ -439,11 +441,6 @@ export async function bootstrapHost(root) {
       state.simulation.tickFrame(state.hostInput, viewportWidth);
     }
 
-    drawSimulation(ctx, minimapCtx, state.simulation, viewportWidth, viewportHeight, {
-      now: time,
-      diagnostics: state.renderDiagnostics,
-      performanceProfile: state.performanceProfile,
-    });
     updateHud(false, time);
     renderRoster(false, time);
     broadcastState();

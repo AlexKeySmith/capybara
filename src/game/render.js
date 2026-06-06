@@ -22,6 +22,10 @@ function createCanvasSurface(width, height) {
   return canvas;
 }
 
+function get2dContext(surface, options) {
+  return surface.getContext('2d', options);
+}
+
 function getRenderCache(simulation) {
   let cache = renderCacheBySimulation.get(simulation);
   if (cache) return cache;
@@ -150,9 +154,37 @@ export function resizeCanvas(canvas, viewportWidth, viewportHeight, performanceP
   }
   canvas.style.width = `${viewportWidth}px`;
   canvas.style.height = `${viewportHeight}px`;
-  const context = canvas.getContext('2d');
+  const context = get2dContext(canvas, { alpha: false, desynchronized: true });
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   return context;
+}
+
+export function drawSimulationWebCanvas(
+  canvas,
+  stageSurface,
+  minimapCtx,
+  simulation,
+  viewportWidth,
+  viewportHeight,
+  options = {},
+) {
+  const displayCtx = resizeCanvas(canvas, viewportWidth, viewportHeight, options.performanceProfile);
+  const dpr = viewportWidth > 0 ? Math.max(1, canvas.width / viewportWidth) : 1;
+  const stageWidth = Math.max(1, Math.floor(viewportWidth * dpr));
+  const stageHeight = Math.max(1, Math.floor(viewportHeight * dpr));
+  const nextStageSurface = stageSurface ?? createCanvasSurface(stageWidth, stageHeight);
+  if (nextStageSurface.width !== stageWidth || nextStageSurface.height !== stageHeight) {
+    nextStageSurface.width = stageWidth;
+    nextStageSurface.height = stageHeight;
+  }
+  const stageCtx = get2dContext(nextStageSurface, { alpha: false, desynchronized: true });
+  stageCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawSimulation(stageCtx, minimapCtx, simulation, viewportWidth, viewportHeight, options);
+
+  displayCtx.setTransform(1, 0, 0, 1, 0, 0);
+  displayCtx.clearRect(0, 0, canvas.width, canvas.height);
+  displayCtx.drawImage(nextStageSurface, 0, 0, canvas.width, canvas.height);
+  return { dpr, stageSurface: nextStageSurface };
 }
 
 export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewportHeight, options = {}) {
