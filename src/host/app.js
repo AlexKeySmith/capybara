@@ -29,6 +29,47 @@ function createPerformanceProfile(query) {
   };
 }
 
+const ATTRACT_ROTATE_MS = 2400;
+
+function formatReadySlots(openSlots) {
+  const slotNumbers = openSlots
+    .map((player) => Number.parseInt(player.label.replace('P', ''), 10))
+    .filter((value) => Number.isInteger(value))
+    .sort((left, right) => left - right);
+  const ranges = [];
+  let start = slotNumbers[0];
+  let end = slotNumbers[0];
+  for (let index = 1; index < slotNumbers.length; index += 1) {
+    const current = slotNumbers[index];
+    if (current === end + 1) {
+      end = current;
+      continue;
+    }
+    ranges.push(start === end ? `P${start}` : `P${start}-P${end}`);
+    start = current;
+    end = current;
+  }
+  if (Number.isInteger(start)) ranges.push(start === end ? `P${start}` : `P${start}-P${end}`);
+  return `${ranges.join(', ')} READY`;
+}
+
+function getAttractBannerState(roster) {
+  const linkedSeats = roster.filter((player) => player.slot === 0 || player.controllerId);
+  const openSlots = roster.filter((player) => player.slot !== 0 && !player.controllerId);
+  const availabilityText = openSlots.length ? formatReadySlots(openSlots) : 'ARENA FULL';
+  const prompts = openSlots.length ? ['SCAN TO JOIN', 'ENTER CALL SIGN', availabilityText] : ['ARENA FULL'];
+  return {
+    availabilityText,
+    linkedText: `${linkedSeats.length}/${roster.length} linked`,
+    prompts,
+    seats: roster.map((player) => ({
+      label: player.label,
+      linked: player.slot === 0 || Boolean(player.controllerId),
+      isHost: player.slot === 0,
+    })),
+  };
+}
+
 export async function bootstrapHost(root) {
   const query = parseAppQuery();
   const fixture = resolveFixture(query.fixture);
@@ -94,6 +135,15 @@ export async function bootstrapHost(root) {
               <div class="overlay-pill" data-testid="host-score">Score: 0</div>
               <div class="overlay-pill" data-testid="host-roster-count">Players: 1 / 4</div>
             </div>
+          </div>
+          <div class="attract-banner" data-testid="host-attract-banner" aria-live="polite">
+            <div class="meta-label">Arcade attract mode</div>
+            <div class="attract-prompt" data-testid="host-attract-prompt">SCAN TO JOIN</div>
+            <div class="attract-meta">
+              <span data-testid="host-attract-status">1/4 linked</span>
+              <span data-testid="host-seat-availability">P2-P4 READY</span>
+            </div>
+            <div class="seat-indicators" data-testid="host-seat-indicators"></div>
           </div>
         </div>
       </section>
@@ -187,6 +237,11 @@ export async function bootstrapHost(root) {
   const rosterList = root.querySelector('[data-testid="roster-list"]');
   const metricBotsEl = root.querySelector('[data-testid="metric-bots"]');
   const metricControllersEl = root.querySelector('[data-testid="metric-controllers"]');
+  const attractBannerEl = root.querySelector('[data-testid="host-attract-banner"]');
+  const attractPromptEl = root.querySelector('[data-testid="host-attract-prompt"]');
+  const attractStatusEl = root.querySelector('[data-testid="host-attract-status"]');
+  const attractAvailabilityEl = root.querySelector('[data-testid="host-seat-availability"]');
+  const attractSeatsEl = root.querySelector('[data-testid="host-seat-indicators"]');
   const copyButton = root.querySelector('[data-action="copy"]');
   const resetButton = root.querySelector('[data-action="reset"]');
 
@@ -207,6 +262,42 @@ export async function bootstrapHost(root) {
     margin: 1,
     color: { dark: '#f8d95c', light: '#00000000' },
   });
+
+  let attractPrompts = ['SCAN TO JOIN', 'ENTER CALL SIGN', 'P2-P4 READY'];
+  let attractPromptIndex = 0;
+  const renderAttractPrompt = () => {
+    attractPromptEl.textContent = attractPrompts[attractPromptIndex] || 'ARENA FULL';
+  };
+
+  const syncAttractBanner = (roster) => {
+    const bannerState = getAttractBannerState(roster);
+    const promptSignature = bannerState.prompts.join('|');
+    if (promptSignature !== attractPrompts.join('|')) {
+      attractPrompts = bannerState.prompts;
+      attractPromptIndex = 0;
+    } else if (attractPromptIndex >= attractPrompts.length) {
+      attractPromptIndex = 0;
+    }
+    attractBannerEl.dataset.full = String(bannerState.availabilityText === 'ARENA FULL');
+    attractStatusEl.textContent = bannerState.linkedText;
+    attractAvailabilityEl.textContent = bannerState.availabilityText;
+    renderAttractPrompt();
+    attractSeatsEl.innerHTML = '';
+    for (const seat of bannerState.seats) {
+      const indicator = document.createElement('div');
+      indicator.className = 'seat-indicator';
+      indicator.dataset.linked = String(seat.linked);
+      indicator.dataset.host = String(seat.isHost);
+      indicator.dataset.testid = `host-seat-${seat.label.toLowerCase()}`;
+      const dot = document.createElement('span');
+      dot.className = 'seat-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.textContent = seat.label;
+      indicator.append(dot, label);
+      attractSeatsEl.append(indicator);
+    }
+  };
 
   function renderRoster(force = false, now = performance.now()) {
     if (!force && now - state.lastRosterRender < 120) return;
@@ -243,6 +334,7 @@ export async function bootstrapHost(root) {
     metricControllersEl.textContent = `${controllers}`;
     metricBotsEl.textContent = `${bots}`;
     rosterCountEl.textContent = `Players: ${1 + controllers} / 4`;
+    syncAttractBanner(roster);
   }
 
   function updateHud(force = false, now = performance.now()) {
@@ -395,6 +487,13 @@ export async function bootstrapHost(root) {
   await transport.connect();
   renderRoster(true, performance.now());
   updateHud(true, performance.now());
+  const attractInterval = state.testMode
+    ? 0
+    : window.setInterval(() => {
+        if (attractPrompts.length <= 1) return;
+        attractPromptIndex = (attractPromptIndex + 1) % attractPrompts.length;
+        renderAttractPrompt();
+      }, ATTRACT_ROTATE_MS);
 
   let lastFrame = performance.now();
   const minimapCtx = minimap.getContext('2d');
@@ -473,6 +572,7 @@ export async function bootstrapHost(root) {
   }, REMOTE_HEARTBEAT_MS);
 
   window.addEventListener('beforeunload', () => {
+    if (attractInterval) window.clearInterval(attractInterval);
     window.clearInterval(heartbeatInterval);
     cancelAnimationFrame(state.rafId);
     transport.send(createMessage('disconnect', { sessionId }));
