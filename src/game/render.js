@@ -1,5 +1,95 @@
 import { CELL, COLS, ROWS, WORLD_HEIGHT, WORLD_WIDTH } from './constants.js';
 
+const terrainRowColors = Array.from({ length: ROWS }, (_, y) => {
+  const shade = 70 + y * 0.7;
+  return `rgb(${Math.min(130, shade)}, ${Math.min(120, 50 + y * 0.55)}, ${Math.min(140, 86 + y * 0.32)})`;
+});
+const renderCacheBySimulation = new WeakMap();
+
+function createCanvasSurface(width, height) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function getRenderCache(simulation) {
+  let cache = renderCacheBySimulation.get(simulation);
+  if (cache) return cache;
+  cache = {
+    terrainVersion: -1,
+    terrainCanvas: null,
+    minimapVersion: -1,
+    minimapWidth: 0,
+    minimapHeight: 0,
+    minimapCanvas: null,
+  };
+  renderCacheBySimulation.set(simulation, cache);
+  return cache;
+}
+
+function ensureTerrainLayer(simulation, cache) {
+  if (cache.terrainCanvas && cache.terrainVersion === simulation.renderVersion) return;
+  const canvas = cache.terrainCanvas ?? createCanvasSurface(WORLD_WIDTH, WORLD_HEIGHT);
+  const layer = canvas.getContext('2d');
+  layer.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+  for (let y = 0; y < ROWS; y += 1) {
+    const py = y * CELL;
+    const rowTerrain = simulation.terrain[y];
+    const rowStains = simulation.stains[y];
+    layer.fillStyle = terrainRowColors[y];
+    for (let x = 0; x < COLS; x += 1) {
+      if (!rowTerrain[x]) continue;
+      const px = x * CELL;
+      layer.fillRect(px, py, CELL, CELL);
+      const stain = rowStains[x];
+      if (stain > 0) {
+        layer.fillStyle = `rgba(255, 88, 108, ${Math.min(0.85, stain / 280)})`;
+        layer.fillRect(px, py, CELL, CELL);
+        layer.fillStyle = terrainRowColors[y];
+      }
+    }
+  }
+
+  cache.terrainCanvas = canvas;
+  cache.terrainVersion = simulation.renderVersion;
+}
+
+function ensureMinimapLayer(simulation, width, height, cache) {
+  if (
+    cache.minimapCanvas
+    && cache.minimapVersion === simulation.renderVersion
+    && cache.minimapWidth === width
+    && cache.minimapHeight === height
+  ) {
+    return;
+  }
+
+  const canvas = cache.minimapCanvas ?? createCanvasSurface(width, height);
+  canvas.width = width;
+  canvas.height = height;
+  const layer = canvas.getContext('2d');
+  layer.fillStyle = '#071225';
+  layer.fillRect(0, 0, width, height);
+  const sx = width / WORLD_WIDTH;
+  const sy = height / WORLD_HEIGHT;
+
+  layer.fillStyle = '#375c9a';
+  for (let y = 0; y < ROWS; y += 1) {
+    for (let x = 0; x < COLS; x += 1) {
+      if (!simulation.terrain[y][x]) continue;
+      layer.fillRect(x * CELL * sx, y * CELL * sy, Math.max(1, CELL * sx), Math.max(1, CELL * sy));
+    }
+  }
+
+  cache.minimapCanvas = canvas;
+  cache.minimapVersion = simulation.renderVersion;
+  cache.minimapWidth = width;
+  cache.minimapHeight = height;
+}
+
 export function resizeCanvas(canvas, viewportWidth, viewportHeight) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const width = Math.floor(viewportWidth * dpr);
@@ -16,6 +106,9 @@ export function resizeCanvas(canvas, viewportWidth, viewportHeight) {
 }
 
 export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewportHeight) {
+  const cache = getRenderCache(simulation);
+  ensureTerrainLayer(simulation, cache);
+
   const background = ctx.createLinearGradient(0, 0, 0, viewportHeight);
   background.addColorStop(0, '#102449');
   background.addColorStop(1, '#07101d');
@@ -24,26 +117,12 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
 
   drawBackgroundBands(ctx, simulation.cameraX, viewportWidth, viewportHeight);
 
+  const sourceX = Math.min(Math.max(0, simulation.cameraX), Math.max(0, WORLD_WIDTH - viewportWidth));
+  ctx.drawImage(cache.terrainCanvas, sourceX, 0, viewportWidth, WORLD_HEIGHT, 0, 0, viewportWidth, WORLD_HEIGHT);
+
   ctx.strokeStyle = 'rgba(100, 170, 255, 0.55)';
   ctx.lineWidth = 2;
   ctx.strokeRect(-simulation.cameraX, 0, WORLD_WIDTH, WORLD_HEIGHT);
-
-  const startColumn = Math.max(0, ((simulation.cameraX / CELL) | 0) - 1);
-  const endColumn = Math.min(COLS - 1, (((simulation.cameraX + viewportWidth) / CELL) | 0) + 1);
-  for (let x = startColumn; x <= endColumn; x += 1) {
-    const px = x * CELL - simulation.cameraX;
-    for (let y = 0; y < ROWS; y += 1) {
-      if (!simulation.terrain[y][x]) continue;
-      const stain = simulation.stains[y][x];
-      const shade = 70 + y * 0.7;
-      ctx.fillStyle = `rgb(${Math.min(130, shade)}, ${Math.min(120, 50 + y * 0.55)}, ${Math.min(140, 86 + y * 0.32)})`;
-      ctx.fillRect(px, y * CELL, CELL, CELL);
-      if (stain > 0) {
-        ctx.fillStyle = `rgba(255, 88, 108, ${Math.min(0.85, stain / 280)})`;
-        ctx.fillRect(px, y * CELL, CELL, CELL);
-      }
-    }
-  }
 
   for (const rope of simulation.ropes) drawRope(ctx, rope, simulation.cameraX);
   for (const bullet of simulation.bullets) drawBullet(ctx, bullet, simulation.cameraX);
@@ -53,7 +132,7 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
   if (simulation.spawnBeaconTicks > 0) drawBeacon(ctx, simulation.players[0], simulation.cameraX);
   if (!simulation.running) drawRoundEnd(ctx, viewportWidth, viewportHeight);
 
-  if (minimapCtx) drawMinimap(minimapCtx, simulation, viewportWidth);
+  if (minimapCtx) drawMinimap(minimapCtx, simulation, viewportWidth, cache);
 }
 
 function drawBackgroundBands(ctx, cameraX, viewportWidth, viewportHeight) {
@@ -190,23 +269,13 @@ function drawRoundEnd(ctx, viewportWidth, viewportHeight) {
   ctx.textAlign = 'start';
 }
 
-function drawMinimap(ctx, simulation, viewportWidth) {
+function drawMinimap(ctx, simulation, viewportWidth, cache) {
   const width = ctx.canvas.width;
   const height = ctx.canvas.height;
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = '#071225';
-  ctx.fillRect(0, 0, width, height);
+  ensureMinimapLayer(simulation, width, height, cache);
+  ctx.drawImage(cache.minimapCanvas, 0, 0);
   const sx = width / WORLD_WIDTH;
   const sy = height / WORLD_HEIGHT;
-
-  ctx.fillStyle = '#375c9a';
-  for (let y = 0; y < ROWS; y += 1) {
-    for (let x = 0; x < COLS; x += 1) {
-      if (simulation.terrain[y][x]) {
-        ctx.fillRect(x * CELL * sx, y * CELL * sy, Math.max(1, CELL * sx), Math.max(1, CELL * sy));
-      }
-    }
-  }
 
   ctx.strokeStyle = '#f8d95c';
   ctx.lineWidth = 2;

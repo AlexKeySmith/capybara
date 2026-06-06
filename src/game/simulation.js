@@ -83,6 +83,7 @@ export class CapybaraSimulation {
     this.running = true;
     this.timeLeft = this.fixture.timeLimit;
     this.cameraX = 0;
+    this.renderVersion = 1;
     this.spawnBeaconTicks = this.fixture.showBeaconTicks;
     this.lastAction = 'Awaiting controller join...';
     this.remoteInputs = Array.from({ length: MAX_PLAYERS }, () => this.emptyInput());
@@ -180,17 +181,20 @@ export class CapybaraSimulation {
     const rr = Math.ceil(radius / CELL);
     const rr2 = (radius / CELL) * (radius / CELL);
 
+    let changed = false;
     for (let y = cy - rr; y <= cy + rr; y += 1) {
       for (let x = cx - rr; x <= cx + rr; x += 1) {
         if (x < 0 || y < 0 || x >= COLS || y >= ROWS) continue;
         const dx = x - cx;
         const dy = y - cy;
         if (dx * dx + dy * dy <= rr2) {
+          if (this.terrain[y][x] || this.stains[y][x]) changed = true;
           this.terrain[y][x] = 0;
           this.stains[y][x] = 0;
         }
       }
     }
+    if (changed) this.renderVersion += 1;
   }
 
   addStainCircle(px, py, radius, amount = 180) {
@@ -199,16 +203,20 @@ export class CapybaraSimulation {
     const rr = Math.ceil(radius / CELL);
     const rr2 = (radius / CELL) * (radius / CELL);
 
+    let changed = false;
     for (let y = cy - rr; y <= cy + rr; y += 1) {
       for (let x = cx - rr; x <= cx + rr; x += 1) {
         if (x < 0 || y < 0 || x >= COLS || y >= ROWS) continue;
         const dx = x - cx;
         const dy = y - cy;
         if (dx * dx + dy * dy <= rr2 && this.terrain[y][x]) {
-          this.stains[y][x] = Math.min(255, this.stains[y][x] + amount);
+          const next = Math.min(255, this.stains[y][x] + amount);
+          if (next !== this.stains[y][x]) changed = true;
+          this.stains[y][x] = next;
         }
       }
     }
+    if (changed) this.renderVersion += 1;
   }
 
   rayToSurface(ox, oy, dx, dy, maxLen, step = 2) {
