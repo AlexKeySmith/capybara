@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { CapybaraSimulation } from '../../src/game/simulation.js';
-import { TICK_RATE, WORLD_HEIGHT, WORLD_WIDTH } from '../../src/game/constants.js';
+import { CELL, TICK_RATE, WORLD_HEIGHT, WORLD_WIDTH } from '../../src/game/constants.js';
 
 describe('CapybaraSimulation dynamics', () => {
   test('counts down round time and stops the match at zero', () => {
@@ -70,5 +70,68 @@ describe('CapybaraSimulation dynamics', () => {
     expect(host.rope).not.toBeNull();
     expect(simulation.ropes.length).toBeGreaterThan(0);
     expect(simulation.lastAction).toContain('anchored a grapple');
+  });
+
+  test('tracks dirty render regions across terrain and stain mutations', () => {
+    const simulation = new CapybaraSimulation({ seed: 1337, fixture: 'training' });
+    const initial = simulation.consumeRenderInvalidation();
+
+    expect(initial).toEqual({
+      version: expect.any(Number),
+      dirtyRegion: {
+        minCol: 0,
+        minRow: 0,
+        maxCol: 359,
+        maxRow: 159,
+      },
+    });
+
+    const col = 40;
+    const row = 30;
+    simulation.terrain[row][col] = 1;
+    simulation.stains[row][col] = 80;
+    simulation.carve(col * CELL, row * CELL, CELL * 1.5);
+
+    const afterCarve = simulation.consumeRenderInvalidation();
+    expect(afterCarve.version).toBe(initial.version + 1);
+    expect(afterCarve.dirtyRegion).toEqual({
+      minCol: 38,
+      minRow: 28,
+      maxCol: 42,
+      maxRow: 32,
+    });
+
+    simulation.terrain[row][col] = 1;
+    simulation.addStainCircle(col * CELL, row * CELL, CELL * 1.5, 90);
+    const afterStain = simulation.consumeRenderInvalidation();
+    expect(afterStain.version).toBe(afterCarve.version + 1);
+    expect(afterStain.dirtyRegion).toEqual({
+      minCol: 38,
+      minRow: 28,
+      maxCol: 42,
+      maxRow: 32,
+    });
+  });
+
+  test('coalesces multiple dirty render regions before the next draw', () => {
+    const simulation = new CapybaraSimulation({ seed: 1337, fixture: 'training' });
+    const initial = simulation.consumeRenderInvalidation();
+
+    simulation.markRenderDirtyRegion(10, 12, 14, 16);
+    simulation.markRenderDirtyRegion(8, 9, 18, 20);
+
+    expect(simulation.consumeRenderInvalidation()).toEqual({
+      version: initial.version,
+      dirtyRegion: {
+        minCol: 8,
+        minRow: 9,
+        maxCol: 18,
+        maxRow: 20,
+      },
+    });
+    expect(simulation.consumeRenderInvalidation()).toEqual({
+      version: initial.version,
+      dirtyRegion: null,
+    });
   });
 });

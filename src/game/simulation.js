@@ -66,6 +66,8 @@ function createPlayer(slot, x, y, isBot) {
 
 export class CapybaraSimulation {
   constructor({ seed, fixture }) {
+    this.renderVersion = 0;
+    this.renderDirtyRegion = null;
     this.reset({ seed, fixture });
   }
 
@@ -83,11 +85,17 @@ export class CapybaraSimulation {
     this.running = true;
     this.timeLeft = this.fixture.timeLimit;
     this.cameraX = 0;
-    this.renderVersion = 1;
+    this.renderVersion += 1;
     this.spawnBeaconTicks = this.fixture.showBeaconTicks;
     this.lastAction = 'Awaiting controller join...';
     this.remoteInputs = Array.from({ length: MAX_PLAYERS }, () => this.emptyInput());
     this.players = this.spawnPlayers();
+    this.renderDirtyRegion = {
+      minCol: 0,
+      minRow: 0,
+      maxCol: COLS - 1,
+      maxRow: ROWS - 1,
+    };
   }
 
   emptyInput() {
@@ -176,6 +184,33 @@ export class CapybaraSimulation {
     return this.isSolid(x, y) || this.isSolid(x + w, y) || this.isSolid(x, y + h) || this.isSolid(x + w, y + h);
   }
 
+  markRenderDirtyRegion(minCol, minRow, maxCol, maxRow) {
+    const next = {
+      minCol: clamp(minCol, 0, COLS - 1),
+      minRow: clamp(minRow, 0, ROWS - 1),
+      maxCol: clamp(maxCol, 0, COLS - 1),
+      maxRow: clamp(maxRow, 0, ROWS - 1),
+    };
+    if (next.minCol > next.maxCol || next.minRow > next.maxRow) return;
+    if (!this.renderDirtyRegion) {
+      this.renderDirtyRegion = next;
+      return;
+    }
+    this.renderDirtyRegion.minCol = Math.min(this.renderDirtyRegion.minCol, next.minCol);
+    this.renderDirtyRegion.minRow = Math.min(this.renderDirtyRegion.minRow, next.minRow);
+    this.renderDirtyRegion.maxCol = Math.max(this.renderDirtyRegion.maxCol, next.maxCol);
+    this.renderDirtyRegion.maxRow = Math.max(this.renderDirtyRegion.maxRow, next.maxRow);
+  }
+
+  consumeRenderInvalidation() {
+    const invalidation = {
+      version: this.renderVersion,
+      dirtyRegion: this.renderDirtyRegion ? { ...this.renderDirtyRegion } : null,
+    };
+    this.renderDirtyRegion = null;
+    return invalidation;
+  }
+
   carve(px, py, radius) {
     const cx = (px / CELL) | 0;
     const cy = (py / CELL) | 0;
@@ -195,7 +230,10 @@ export class CapybaraSimulation {
         }
       }
     }
-    if (changed) this.renderVersion += 1;
+    if (changed) {
+      this.renderVersion += 1;
+      this.markRenderDirtyRegion(cx - rr, cy - rr, cx + rr, cy + rr);
+    }
   }
 
   addStainCircle(px, py, radius, amount = 180) {
@@ -217,7 +255,10 @@ export class CapybaraSimulation {
         }
       }
     }
-    if (changed) this.renderVersion += 1;
+    if (changed) {
+      this.renderVersion += 1;
+      this.markRenderDirtyRegion(cx - rr, cy - rr, cx + rr, cy + rr);
+    }
   }
 
   rayToSurface(ox, oy, dx, dy, maxLen, step = 2) {
