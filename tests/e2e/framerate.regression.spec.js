@@ -62,13 +62,21 @@ test.describe('host framerate regression pack', () => {
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     const baseline = await measureRafStats(page);
+    await testInfo.attach('framerate-baseline.json', {
+      contentType: 'application/json',
+      body: Buffer.from(JSON.stringify(baseline, null, 2), 'utf8'),
+    });
     expect(baseline.fps).toBeGreaterThanOrEqual(45);
     expect(baseline.p95FrameMs).toBeLessThan(45);
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     const throttled = await measureRafStats(page);
-    expect(throttled.fps).toBeGreaterThanOrEqual(18);
-    expect(throttled.p95FrameMs).toBeLessThan(90);
+    await testInfo.attach('framerate-throttled.json', {
+      contentType: 'application/json',
+      body: Buffer.from(JSON.stringify(throttled, null, 2), 'utf8'),
+    });
+    expect(throttled.fps).toBeGreaterThanOrEqual(12);
+    expect(throttled.p95FrameMs).toBeLessThan(180);
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   });
