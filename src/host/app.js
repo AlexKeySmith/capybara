@@ -20,10 +20,12 @@ function createPerformanceProfile(query) {
   return {
     name: 'webcanvas',
     mainGameRenderer: 'webcanvas',
-    dprCap: 2,
-    minCanvasHeight: 640,
-    maxCanvasHeight: 820,
-    minimapIntervalMs: 0,
+    dprCap: 1,
+    minCanvasHeight: 480,
+    maxCanvasHeight: 600,
+    minimapIntervalMs: 250,
+    backgroundBandCount: 1,
+    backgroundBandStep: 120,
   };
 }
 

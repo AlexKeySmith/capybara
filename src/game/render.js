@@ -1,5 +1,8 @@
 import { CELL, COLS, ROWS, WORLD_HEIGHT, WORLD_WIDTH } from './constants.js';
 
+const DASH_FX = Object.freeze([4, 4]);
+const DASH_CLEAR = Object.freeze([]);
+
 const terrainRowColors = Array.from({ length: ROWS }, (_, y) => {
   const shade = 70 + y * 0.7;
   return `rgb(${Math.min(130, shade)}, ${Math.min(120, 50 + y * 0.55)}, ${Math.min(140, 86 + y * 0.32)})`;
@@ -66,20 +69,27 @@ function drawTerrainRegion(layer, simulation, dirtyRegion) {
     (endRow - startRow + 1) * CELL,
   );
 
+  // Pass 1: solid terrain cells (one fillStyle per row, no mid-loop switches)
+  for (let y = startRow; y <= endRow; y += 1) {
+    const py = y * CELL;
+    const rowTerrain = simulation.terrain[y];
+    layer.fillStyle = terrainRowColors[y];
+    for (let x = startCol; x <= endCol; x += 1) {
+      if (rowTerrain[x]) layer.fillRect(x * CELL, py, CELL, CELL);
+    }
+  }
+
+  // Pass 2: stain overlays (stained cells are sparse; fillStyle changes are infrequent)
   for (let y = startRow; y <= endRow; y += 1) {
     const py = y * CELL;
     const rowTerrain = simulation.terrain[y];
     const rowStains = simulation.stains[y];
-    layer.fillStyle = terrainRowColors[y];
     for (let x = startCol; x <= endCol; x += 1) {
       if (!rowTerrain[x]) continue;
-      const px = x * CELL;
-      layer.fillRect(px, py, CELL, CELL);
       const stain = rowStains[x];
       if (stain > 0) {
         layer.fillStyle = `rgba(255, 88, 108, ${Math.min(0.85, stain / 280)})`;
-        layer.fillRect(px, py, CELL, CELL);
-        layer.fillStyle = terrainRowColors[y];
+        layer.fillRect(x * CELL, py, CELL, CELL);
       }
     }
   }
@@ -161,7 +171,7 @@ export function resizeCanvas(canvas, viewportWidth, viewportHeight, performanceP
 
 export function drawSimulationWebCanvas(
   canvas,
-  stageSurface,
+  _stageSurface,
   minimapCtx,
   simulation,
   viewportWidth,
@@ -170,21 +180,8 @@ export function drawSimulationWebCanvas(
 ) {
   const displayCtx = resizeCanvas(canvas, viewportWidth, viewportHeight, options.performanceProfile);
   const dpr = viewportWidth > 0 ? Math.max(1, canvas.width / viewportWidth) : 1;
-  const stageWidth = Math.max(1, Math.floor(viewportWidth * dpr));
-  const stageHeight = Math.max(1, Math.floor(viewportHeight * dpr));
-  const nextStageSurface = stageSurface ?? createCanvasSurface(stageWidth, stageHeight);
-  if (nextStageSurface.width !== stageWidth || nextStageSurface.height !== stageHeight) {
-    nextStageSurface.width = stageWidth;
-    nextStageSurface.height = stageHeight;
-  }
-  const stageCtx = get2dContext(nextStageSurface, { alpha: false, desynchronized: true });
-  stageCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawSimulation(stageCtx, minimapCtx, simulation, viewportWidth, viewportHeight, options);
-
-  displayCtx.setTransform(1, 0, 0, 1, 0, 0);
-  displayCtx.clearRect(0, 0, canvas.width, canvas.height);
-  displayCtx.drawImage(nextStageSurface, 0, 0, canvas.width, canvas.height);
-  return { dpr, stageSurface: nextStageSurface };
+  drawSimulation(displayCtx, minimapCtx, simulation, viewportWidth, viewportHeight, options);
+  return { dpr, stageSurface: null };
 }
 
 export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewportHeight, options = {}) {
@@ -209,7 +206,8 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
   ctx.strokeRect(-simulation.cameraX, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
   for (const rope of simulation.ropes) drawRope(ctx, rope, simulation.cameraX);
-  for (const bullet of simulation.bullets) drawBullet(ctx, bullet, simulation.cameraX);
+  drawBullets(ctx, simulation.bullets, simulation.cameraX);
+  ctx.font = '10px Inter, sans-serif';
   for (const player of simulation.players) drawPlayer(ctx, player, simulation.cameraX);
   for (const effect of simulation.fx) drawFx(ctx, effect, simulation.cameraX);
 
@@ -299,14 +297,17 @@ function drawPlayer(ctx, player, cameraX) {
   ctx.fillStyle = 'rgba(5, 10, 17, 0.8)';
   ctx.fillRect(x - 2, y - 22, 54, 12);
   ctx.fillStyle = '#e8f2ff';
-  ctx.font = '10px Inter, sans-serif';
   ctx.fillText(player.name, x + 2, y - 13);
 }
 
-function drawBullet(ctx, bullet, cameraX) {
+function drawBullets(ctx, bullets, cameraX) {
+  if (!bullets.length) return;
   ctx.fillStyle = '#ffe27a';
   ctx.beginPath();
-  ctx.arc(bullet.x - cameraX, bullet.y, bullet.r, 0, Math.PI * 2);
+  for (const bullet of bullets) {
+    ctx.moveTo(bullet.x - cameraX + bullet.r, bullet.y);
+    ctx.arc(bullet.x - cameraX, bullet.y, bullet.r, 0, Math.PI * 2);
+  }
   ctx.fill();
 }
 
@@ -332,12 +333,12 @@ function drawFx(ctx, effect, cameraX) {
   const blink = effect.age % 4 < 2;
   ctx.strokeStyle = blink ? '#ff7b7b' : '#ffffff';
   ctx.lineWidth = 2;
-  ctx.setLineDash([4, 4]);
+  ctx.setLineDash(DASH_FX);
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.setLineDash(DASH_CLEAR);
   ctx.fillStyle = '#ff4d4d';
   ctx.beginPath();
   ctx.arc(x2, y2, 3, 0, Math.PI * 2);
