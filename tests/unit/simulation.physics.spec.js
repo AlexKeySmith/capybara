@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { MolezSimulation } from '../../src/game/simulation.js';
+import { CapybaraSimulation } from '../../src/game/simulation.js';
 import { CELL, COLS, GRAVITY, ROWS, WORLD_WIDTH } from '../../src/game/constants.js';
 
 function createSimulation() {
-  return new MolezSimulation({ seed: 1337, fixture: 'training' });
+  return new CapybaraSimulation({ seed: 1337, fixture: 'training' });
 }
 
 function blankTerrain() {
@@ -48,7 +48,7 @@ function createRope(player, anchor, len, overrides = {}) {
   };
 }
 
-describe('MolezSimulation physics regression', () => {
+describe('CapybaraSimulation physics regression', () => {
   test('accelerates horizontally with a deterministic cap', () => {
     const simulation = createSimulation();
     const player = simulation.players[0];

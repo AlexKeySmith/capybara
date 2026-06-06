@@ -112,8 +112,6 @@ export class CapybaraSimulation {
       }
     }
 
-    export { CapybaraSimulation as MolezSimulation };
-
     for (let pass = 0; pass < 4; pass += 1) {
       const next = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
       for (let y = 1; y < ROWS - 1; y += 1) {
@@ -123,6 +121,7 @@ export class CapybaraSimulation {
             for (let dx = -1; dx <= 1; dx += 1) {
               if (grid[y + dy][x + dx]) count += 1;
             }
+
           }
           next[y][x] = count >= 5 ? 1 : 0;
         }
