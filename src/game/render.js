@@ -26,6 +26,7 @@ function getRenderCache(simulation) {
     minimapWidth: 0,
     minimapHeight: 0,
     minimapCanvas: null,
+    lastMinimapDrawAt: -Infinity,
     backgroundGradientHeight: 0,
     backgroundGradient: null,
   };
@@ -106,8 +107,9 @@ function ensureMinimapLayer(simulation, width, height, cache) {
   cache.minimapHeight = height;
 }
 
-export function resizeCanvas(canvas, viewportWidth, viewportHeight) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+export function resizeCanvas(canvas, viewportWidth, viewportHeight, performanceProfile = {}) {
+  const dprCap = performanceProfile.dprCap ?? 2;
+  const dpr = Math.min(dprCap, window.devicePixelRatio || 1);
   const width = Math.floor(viewportWidth * dpr);
   const height = Math.floor(viewportHeight * dpr);
   if (canvas.width !== width || canvas.height !== height) {
@@ -121,7 +123,10 @@ export function resizeCanvas(canvas, viewportWidth, viewportHeight) {
   return context;
 }
 
-export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewportHeight) {
+export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewportHeight, options = {}) {
+  const diagnostics = options.diagnostics;
+  const now = options.now ?? performance.now();
+  const performanceProfile = options.performanceProfile ?? {};
   const cache = getRenderCache(simulation);
   ensureTerrainLayer(simulation, cache);
 
@@ -129,7 +134,7 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, viewportWidth, viewportHeight);
 
-  drawBackgroundBands(ctx, simulation.cameraX, viewportWidth, viewportHeight);
+  drawBackgroundBands(ctx, simulation.cameraX, viewportWidth, viewportHeight, performanceProfile);
 
   const sourceX = Math.min(Math.max(0, simulation.cameraX), Math.max(0, WORLD_WIDTH - viewportWidth));
   ctx.drawImage(cache.terrainCanvas, sourceX, 0, viewportWidth, WORLD_HEIGHT, 0, 0, viewportWidth, WORLD_HEIGHT);
@@ -146,18 +151,36 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
   if (simulation.spawnBeaconTicks > 0) drawBeacon(ctx, simulation.players[0], simulation.cameraX);
   if (!simulation.running) drawRoundEnd(ctx, viewportWidth, viewportHeight);
 
-  if (minimapCtx) drawMinimap(minimapCtx, simulation, viewportWidth, cache);
+  if (minimapCtx) {
+    const minimapIntervalMs = performanceProfile.minimapIntervalMs ?? 0;
+    const shouldDrawMinimap = minimapIntervalMs === 0
+      || cache.minimapVersion !== simulation.renderVersion
+      || now - cache.lastMinimapDrawAt >= minimapIntervalMs;
+    if (shouldDrawMinimap) {
+      drawMinimap(minimapCtx, simulation, viewportWidth, cache);
+      cache.lastMinimapDrawAt = now;
+      if (diagnostics) diagnostics.minimapDraws += 1;
+    } else if (diagnostics) {
+      diagnostics.skippedMinimapDraws += 1;
+    }
+  }
 }
 
-function drawBackgroundBands(ctx, cameraX, viewportWidth, viewportHeight) {
-  for (let index = 0; index < backgroundBandParallax.length; index += 1) {
+function drawBackgroundBands(ctx, cameraX, viewportWidth, viewportHeight, performanceProfile = {}) {
+  const bandCount = Math.min(
+    performanceProfile.backgroundBandCount ?? backgroundBandParallax.length,
+    backgroundBandParallax.length,
+  );
+  const xStep = performanceProfile.backgroundBandStep ?? 80;
+  const waveAmplitude = performanceProfile.lowPowerMode ? 18 : 24;
+  for (let index = 0; index < bandCount; index += 1) {
     const factor = backgroundBandParallax[index];
     ctx.fillStyle = backgroundBandColors[index];
     ctx.beginPath();
     const offset = cameraX * factor;
     ctx.moveTo(0, viewportHeight);
-    for (let x = 0; x <= viewportWidth; x += 80) {
-      const y = viewportHeight * (0.42 + index * 0.1) + Math.sin((x + offset) / 120) * 24;
+    for (let x = 0; x <= viewportWidth; x += xStep) {
+      const y = viewportHeight * (0.42 + index * 0.1) + Math.sin((x + offset) / 120) * waveAmplitude;
       ctx.lineTo(x, y);
     }
     ctx.lineTo(viewportWidth, viewportHeight);
