@@ -39,7 +39,10 @@ export async function bootstrapHost(root) {
     peers: new Map(),
     controllerAssignments: new Map(),
     rosterSignature: '',
+    hudSignature: '',
     lastStateBroadcast: 0,
+    lastHudUpdate: 0,
+    lastRosterRender: 0,
     rafId: 0,
   };
 
@@ -183,7 +186,9 @@ export async function bootstrapHost(root) {
     color: { dark: '#f8d95c', light: '#00000000' },
   });
 
-  function renderRoster(force = false) {
+  function renderRoster(force = false, now = performance.now()) {
+    if (!force && now - state.lastRosterRender < 120) return;
+    state.lastRosterRender = now;
     const roster = state.simulation.getRosterSnapshot();
     const signature = roster.map((player) => `${player.slot}:${player.controllerId || '-'}:${player.isBot ? 1 : 0}:${player.hp}:${player.name}`).join('|');
     if (!force && signature === state.rosterSignature) return;
@@ -216,6 +221,17 @@ export async function bootstrapHost(root) {
     metricControllersEl.textContent = `${controllers}`;
     metricBotsEl.textContent = `${bots}`;
     rosterCountEl.textContent = `Players: ${1 + controllers} / 4`;
+  }
+
+  function updateHud(force = false, now = performance.now()) {
+    if (!force && now - state.lastHudUpdate < 100) return;
+    state.lastHudUpdate = now;
+    const signature = `${Math.ceil(state.simulation.timeLeft)}|${state.simulation.score}|${state.simulation.lastAction}`;
+    if (!force && signature === state.hudSignature) return;
+    state.hudSignature = signature;
+    timeEl.textContent = `Time: ${Math.ceil(state.simulation.timeLeft)}`;
+    scoreEl.textContent = `Score: ${state.simulation.score}`;
+    lastActionEl.textContent = state.simulation.lastAction;
   }
 
   function broadcastState(force = false) {
@@ -269,7 +285,7 @@ export async function bootstrapHost(root) {
         reason: 'Arena full',
       }));
     }
-    renderRoster(true);
+    renderRoster(true, performance.now());
     broadcastState(true);
   }
 
@@ -284,7 +300,7 @@ export async function bootstrapHost(root) {
     state.peers.delete(message.clientId);
     state.controllerAssignments.delete(message.clientId);
     state.simulation.releaseController(message.clientId);
-    renderRoster(true);
+    renderRoster(true, performance.now());
     broadcastState(true);
   }
 
@@ -350,12 +366,13 @@ export async function bootstrapHost(root) {
       const slot = state.simulation.assignController(controllerId, peer.name);
       peer.slot = slot;
     }
-    renderRoster(true);
+    renderRoster(true, performance.now());
     broadcastState(true);
   });
 
   await transport.connect();
-  renderRoster(true);
+  renderRoster(true, performance.now());
+  updateHud(true, performance.now());
 
   let lastFrame = performance.now();
   const minimapCtx = minimap.getContext('2d');
@@ -374,11 +391,8 @@ export async function bootstrapHost(root) {
     }
 
     drawSimulation(ctx, minimapCtx, state.simulation, viewportWidth, viewportHeight);
-    timeEl.textContent = `Time: ${Math.ceil(state.simulation.timeLeft)}`;
-    scoreEl.textContent = `Score: ${state.simulation.score}`;
-    lastActionEl.textContent = state.simulation.lastAction;
-
-    renderRoster();
+    updateHud(false, time);
+    renderRoster(false, time);
     broadcastState();
     state.rafId = requestAnimationFrame(renderFrame);
   };

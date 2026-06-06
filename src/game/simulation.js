@@ -121,6 +121,7 @@ export class CapybaraSimulation {
             for (let dx = -1; dx <= 1; dx += 1) {
               if (grid[y + dy][x + dx]) count += 1;
             }
+
           }
           next[y][x] = count >= 5 ? 1 : 0;
         }
