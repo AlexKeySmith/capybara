@@ -4,6 +4,8 @@ const terrainRowColors = Array.from({ length: ROWS }, (_, y) => {
   const shade = 70 + y * 0.7;
   return `rgb(${Math.min(130, shade)}, ${Math.min(120, 50 + y * 0.55)}, ${Math.min(140, 86 + y * 0.32)})`;
 });
+const backgroundBandParallax = [-0.08, -0.16, -0.24];
+const backgroundBandColors = ['rgba(82, 131, 255, 0.15)', 'rgba(38, 80, 165, 0.2)', 'rgba(13, 33, 74, 0.32)'];
 const renderCacheBySimulation = new WeakMap();
 
 function createCanvasSurface(width, height) {
@@ -24,9 +26,21 @@ function getRenderCache(simulation) {
     minimapWidth: 0,
     minimapHeight: 0,
     minimapCanvas: null,
+    backgroundGradientHeight: 0,
+    backgroundGradient: null,
   };
   renderCacheBySimulation.set(simulation, cache);
   return cache;
+}
+
+function ensureBackgroundGradient(ctx, viewportHeight, cache) {
+  if (cache.backgroundGradient && cache.backgroundGradientHeight === viewportHeight) return cache.backgroundGradient;
+  const background = ctx.createLinearGradient(0, 0, 0, viewportHeight);
+  background.addColorStop(0, '#102449');
+  background.addColorStop(1, '#07101d');
+  cache.backgroundGradient = background;
+  cache.backgroundGradientHeight = viewportHeight;
+  return background;
 }
 
 function ensureTerrainLayer(simulation, cache) {
@@ -75,12 +89,14 @@ function ensureMinimapLayer(simulation, width, height, cache) {
   layer.fillRect(0, 0, width, height);
   const sx = width / WORLD_WIDTH;
   const sy = height / WORLD_HEIGHT;
+  const cellWidth = Math.max(1, CELL * sx);
+  const cellHeight = Math.max(1, CELL * sy);
 
   layer.fillStyle = '#375c9a';
   for (let y = 0; y < ROWS; y += 1) {
     for (let x = 0; x < COLS; x += 1) {
       if (!simulation.terrain[y][x]) continue;
-      layer.fillRect(x * CELL * sx, y * CELL * sy, Math.max(1, CELL * sx), Math.max(1, CELL * sy));
+      layer.fillRect(x * CELL * sx, y * CELL * sy, cellWidth, cellHeight);
     }
   }
 
@@ -109,9 +125,7 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
   const cache = getRenderCache(simulation);
   ensureTerrainLayer(simulation, cache);
 
-  const background = ctx.createLinearGradient(0, 0, 0, viewportHeight);
-  background.addColorStop(0, '#102449');
-  background.addColorStop(1, '#07101d');
+  const background = ensureBackgroundGradient(ctx, viewportHeight, cache);
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, viewportWidth, viewportHeight);
 
@@ -136,21 +150,20 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
 }
 
 function drawBackgroundBands(ctx, cameraX, viewportWidth, viewportHeight) {
-  const parallax = [-0.08, -0.16, -0.24];
-  const colors = ['rgba(82, 131, 255, 0.15)', 'rgba(38, 80, 165, 0.2)', 'rgba(13, 33, 74, 0.32)'];
-  parallax.forEach((factor, index) => {
-    ctx.fillStyle = colors[index];
+  for (let index = 0; index < backgroundBandParallax.length; index += 1) {
+    const factor = backgroundBandParallax[index];
+    ctx.fillStyle = backgroundBandColors[index];
     ctx.beginPath();
     const offset = cameraX * factor;
     ctx.moveTo(0, viewportHeight);
-    for (let x = 0; x <= viewportWidth; x += 60) {
+    for (let x = 0; x <= viewportWidth; x += 80) {
       const y = viewportHeight * (0.42 + index * 0.1) + Math.sin((x + offset) / 120) * 24;
       ctx.lineTo(x, y);
     }
     ctx.lineTo(viewportWidth, viewportHeight);
     ctx.closePath();
     ctx.fill();
-  });
+  }
 }
 
 function drawPlayer(ctx, player, cameraX) {
