@@ -29,6 +29,7 @@ npm run security:audit
 
 - Run `npm run dev` for hot reload.
 - Run `npm run test:e2e` for browser-level validation.
+- Run `npm run test:e2e:framerate` to execute the framerate regression pack (includes a CPU-throttled scenario).
 - Use deterministic URLs such as:
   - `/?session=test-host-123&transport=local&fixture=showcase&seed=1337&test=1`
   - `/controller/?session=test-host-123&transport=local&name=Ace`
