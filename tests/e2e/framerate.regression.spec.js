@@ -1,5 +1,23 @@
 import { expect, test } from '@playwright/test';
 
+const performanceMetricNames = [
+  'FramesPerSecond',
+  'TaskDuration',
+  'ScriptDuration',
+  'LayoutDuration',
+  'RecalcStyleDuration',
+  'JSHeapUsedSize',
+  'JSHeapTotalSize',
+  'Nodes',
+];
+
+async function attachJson(testInfo, name, payload) {
+  await testInfo.attach(name, {
+    contentType: 'application/json',
+    body: Buffer.from(JSON.stringify(payload, null, 2), 'utf8'),
+  });
+}
+
 async function measureRafStats(page, options = {}) {
   return page.evaluate(({ warmupMs, sampleMs }) => new Promise((resolve) => {
     const timestamps = [];
@@ -51,6 +69,39 @@ async function measureRafStats(page, options = {}) {
   });
 }
 
+async function readChromeMetrics(cdp) {
+  const { metrics } = await cdp.send('Performance.getMetrics');
+  return Object.fromEntries(
+    metrics
+      .filter((metric) => performanceMetricNames.includes(metric.name))
+      .map((metric) => [metric.name, metric.value]),
+  );
+}
+
+async function readHostDiagnostics(page) {
+  return page.evaluate(() => window.__capybara?.host?.getDiagnostics?.() ?? null);
+}
+
+async function sampleScenario(page, cdp, options = {}) {
+  if (options.cpuThrottlingRate != null) {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: options.cpuThrottlingRate });
+  }
+
+  const before = await readChromeMetrics(cdp);
+  const raf = await measureRafStats(page, options);
+  const after = await readChromeMetrics(cdp);
+  const diagnostics = await readHostDiagnostics(page);
+
+  return {
+    chromeMetrics: {
+      after,
+      before,
+    },
+    diagnostics,
+    raf,
+  };
+}
+
 test.describe('host framerate regression pack', () => {
   test('maintains acceptable frame pacing in baseline and CPU-throttled runs', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium', 'Framerate pack runs only in chromium due CPU throttling via CDP.');
@@ -59,25 +110,69 @@ test.describe('host framerate regression pack', () => {
     await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
 
     const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Performance.enable');
+
+    const baseline = await sampleScenario(page, cdp, { cpuThrottlingRate: 1 });
+    await attachJson(testInfo, 'framerate-baseline.json', baseline);
+    expect(baseline.raf.fps).toBeGreaterThanOrEqual(20);
+    expect(baseline.raf.frames).toBeGreaterThan(80);
+    expect(Number.isFinite(baseline.raf.p95FrameMs)).toBe(true);
+    expect(baseline.diagnostics?.profile.lowPowerMode).toBe(false);
+
+    const throttled = await sampleScenario(page, cdp, { cpuThrottlingRate: 4 });
+    await attachJson(testInfo, 'framerate-throttled.json', throttled);
+    expect(throttled.raf.fps).toBeGreaterThanOrEqual(6);
+    expect(throttled.raf.frames).toBeGreaterThan(20);
+    expect(Number.isFinite(throttled.raf.p95FrameMs)).toBe(true);
+    expect(throttled.raf.fps).toBeLessThan(baseline.raf.fps);
+    expect(throttled.raf.p95FrameMs).toBeGreaterThan(baseline.raf.p95FrameMs);
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-    const baseline = await measureRafStats(page);
-    await testInfo.attach('framerate-baseline.json', {
-      contentType: 'application/json',
-      body: Buffer.from(JSON.stringify(baseline, null, 2), 'utf8'),
-    });
-    expect(baseline.fps).toBeGreaterThanOrEqual(45);
-    expect(baseline.p95FrameMs).toBeLessThan(45);
+  });
 
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-    const throttled = await measureRafStats(page);
-    await testInfo.attach('framerate-throttled.json', {
-      contentType: 'application/json',
-      body: Buffer.from(JSON.stringify(throttled, null, 2), 'utf8'),
+  test('applies the low-power profile under a simulated constrained device setup', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'Low-power pack runs only in chromium due CDP diagnostics.');
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Performance.enable');
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1024,
+      height: 600,
+      deviceScaleFactor: 1,
+      mobile: false,
     });
-    expect(throttled.fps).toBeGreaterThanOrEqual(12);
-    expect(throttled.p95FrameMs).toBeLessThan(180);
+
+    await page.goto('/?session=fps-pack-low-default&transport=local&fixture=showcase&seed=1337&test=1');
+    await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
+
+    const constrainedDefault = await sampleScenario(page, cdp, {
+      cpuThrottlingRate: 6,
+      sampleMs: 5_000,
+      warmupMs: 2_000,
+    });
+    await attachJson(testInfo, 'framerate-constrained-default.json', constrainedDefault);
+
+    await page.goto('/?session=fps-pack-low-power&transport=local&fixture=showcase&seed=1337&test=1&power=low');
+    await page.waitForFunction(() => Boolean(window.__capybara?.host?.ready));
+
+    const lowPower = await sampleScenario(page, cdp, {
+      cpuThrottlingRate: 6,
+      sampleMs: 5_000,
+      warmupMs: 2_000,
+    });
+    await attachJson(testInfo, 'framerate-low-power.json', lowPower);
+
+    expect(constrainedDefault.diagnostics?.profile.lowPowerMode).toBe(false);
+    expect(lowPower.diagnostics?.profile.lowPowerMode).toBe(true);
+    expect(lowPower.diagnostics?.profile.dprCap).toBe(1);
+    expect(lowPower.diagnostics?.canvas?.dpr).toBeLessThanOrEqual(1);
+    expect(lowPower.diagnostics?.render.minimapDraws).toBeLessThan(lowPower.diagnostics?.render.frames);
+    expect(lowPower.diagnostics?.render.skippedMinimapDraws).toBeGreaterThan(0);
+    expect(lowPower.diagnostics?.canvas?.totalBytes).toBeLessThan(constrainedDefault.diagnostics?.canvas?.totalBytes);
+    expect(lowPower.raf.fps).toBeGreaterThanOrEqual(constrainedDefault.raf.fps * 0.75);
+    expect(lowPower.raf.p95FrameMs).toBeLessThanOrEqual(constrainedDefault.raf.p95FrameMs * 1.25);
 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
   });
 });

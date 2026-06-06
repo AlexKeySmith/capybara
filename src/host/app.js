@@ -16,6 +16,28 @@ import { createMessage, isProtocolMessage, normalizeInputState, normalizeJoinPay
 import { parseAppQuery, syncHostUrl } from '../shared/query.js';
 import { buildControllerUrl, ensureSessionId, shortCode } from '../shared/session.js';
 
+function detectLowPowerMode() {
+  const userAgent = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  const armDevice = /(arm|aarch64)/i.test(userAgent) || /(arm|aarch64)/i.test(platform);
+  const raspberryPi = /raspberry pi/i.test(userAgent);
+  const lowCoreCount = Number.isFinite(navigator.hardwareConcurrency) && navigator.hardwareConcurrency <= 4;
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+  return raspberryPi || reducedMotion || (armDevice && lowCoreCount);
+}
+
+function createPerformanceProfile(query) {
+  const lowPowerMode = query.lowPowerMode || detectLowPowerMode();
+  return {
+    name: lowPowerMode ? 'low' : 'default',
+    lowPowerMode,
+    dprCap: lowPowerMode ? 1 : 2,
+    minCanvasHeight: lowPowerMode ? 480 : 640,
+    maxCanvasHeight: lowPowerMode ? 640 : 820,
+    minimapIntervalMs: lowPowerMode ? 180 : 0,
+  };
+}
+
 export async function bootstrapHost(root) {
   const query = parseAppQuery();
   const fixture = resolveFixture(query.fixture);
@@ -36,6 +58,7 @@ export async function bootstrapHost(root) {
     transportMode: transport.mode,
     hostInput: normalizeInputState({}),
     simulation: new CapybaraSimulation({ seed: query.seed, fixture: query.fixture }),
+    performanceProfile: createPerformanceProfile(query),
     peers: new Map(),
     controllerAssignments: new Map(),
     rosterSignature: '',
@@ -43,10 +66,17 @@ export async function bootstrapHost(root) {
     lastStateBroadcast: 0,
     lastHudUpdate: 0,
     lastRosterRender: 0,
+    renderDiagnostics: {
+      frames: 0,
+      minimapDraws: 0,
+      skippedMinimapDraws: 0,
+      canvas: null,
+    },
     rafId: 0,
   };
 
-  root.className = 'app-shell scanlines';
+  root.className = `app-shell scanlines${state.performanceProfile.lowPowerMode ? ' performance-low' : ''}`;
+  root.dataset.performanceProfile = state.performanceProfile.name;
   root.innerHTML = `
     <div class="layout">
       <section class="stage-panel">
@@ -174,6 +204,7 @@ export async function bootstrapHost(root) {
     sessionId,
     transport: query.transport || transport.mode,
     fixture: query.fixture,
+    powerMode: state.performanceProfile.name,
     seed: query.seed,
     testMode: query.testMode,
   });
@@ -376,12 +407,30 @@ export async function bootstrapHost(root) {
 
   let lastFrame = performance.now();
   const minimapCtx = minimap.getContext('2d');
+  const updateCanvasDiagnostics = (dpr) => {
+    const surfaces = [canvas, minimap, qrCanvas].map((surface) => ({
+      width: surface.width,
+      height: surface.height,
+      bytes: surface.width * surface.height * 4,
+    }));
+    state.renderDiagnostics.canvas = {
+      dpr,
+      surfaces,
+      totalBytes: surfaces.reduce((sum, surface) => sum + surface.bytes, 0),
+    };
+  };
   const renderFrame = (time) => {
     const delta = Math.min(64, time - lastFrame);
     lastFrame = time;
     const viewportWidth = canvas.parentElement.clientWidth;
-    const viewportHeight = Math.max(640, Math.min(window.innerHeight - 120, 820));
-    const ctx = resizeCanvas(canvas, viewportWidth, viewportHeight);
+    const viewportHeight = Math.max(
+      state.performanceProfile.minCanvasHeight,
+      Math.min(window.innerHeight - 120, state.performanceProfile.maxCanvasHeight),
+    );
+    const ctx = resizeCanvas(canvas, viewportWidth, viewportHeight, state.performanceProfile);
+    const dpr = viewportWidth > 0 ? Number((canvas.width / viewportWidth).toFixed(2)) : 1;
+    state.renderDiagnostics.frames += 1;
+    updateCanvasDiagnostics(dpr);
 
     removeTimedOutControllers();
 
@@ -390,7 +439,11 @@ export async function bootstrapHost(root) {
       state.simulation.tickFrame(state.hostInput, viewportWidth);
     }
 
-    drawSimulation(ctx, minimapCtx, state.simulation, viewportWidth, viewportHeight);
+    drawSimulation(ctx, minimapCtx, state.simulation, viewportWidth, viewportHeight, {
+      now: time,
+      diagnostics: state.renderDiagnostics,
+      performanceProfile: state.performanceProfile,
+    });
     updateHud(false, time);
     renderRoster(false, time);
     broadcastState();
@@ -404,6 +457,15 @@ export async function bootstrapHost(root) {
       ready: true,
       sessionId,
       getState: () => state.simulation.getPublicState(),
+      getDiagnostics: () => ({
+        canvas: state.renderDiagnostics.canvas ? { ...state.renderDiagnostics.canvas } : null,
+        profile: { ...state.performanceProfile },
+        render: {
+          frames: state.renderDiagnostics.frames,
+          minimapDraws: state.renderDiagnostics.minimapDraws,
+          skippedMinimapDraws: state.renderDiagnostics.skippedMinimapDraws,
+        },
+      }),
     },
   };
 
