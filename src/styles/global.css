@@ -452,6 +452,14 @@ input:focus-visible {
   color: var(--text);
 }
 
+textarea.text-input.reply-code {
+  min-height: 112px;
+  padding: 12px 14px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.92rem;
+}
+
 .controller-page {
   min-height: 100vh;
   display: grid;

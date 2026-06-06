@@ -10,6 +10,7 @@ A modern-web game rebuilt in pure modern JavaScript for GitHub Pages, fast LLM i
 - **Deterministic simulation** separated from rendering for reproducible browser tests.
 - **Transport abstraction** with:
   - local `BroadcastChannel` mode for same-browser / same-origin fast iteration
+  - manual `peer` mode that bootstraps WebRTC with QR + reply codes and no signaling server
   - optional managed relay mode via `VITE_SIGNALING_URL` for remote mobile devices
 - **Browser-first automation** via Playwright.
 - **Architecture decision records** under `/docs/adr`.
@@ -38,11 +39,12 @@ npm run security:audit
 
 ## Deployment model
 
-The frontend is fully static and works on GitHub Pages. Remote phone controllers need a **managed relay/signaling service** because GitHub Pages cannot host realtime signaling.
+The frontend is fully static and works on GitHub Pages. Remote phone controllers can either use a manual peer-to-peer WebRTC bootstrap (QR invite + reply code) or an optional managed relay/signaling service.
 
 ### Transport modes
 
 - `local` — uses `BroadcastChannel`; ideal for local browser automation and same-browser development.
+- `peer` — uses WebRTC data channels with a manual reply-code handshake; no signaling server required.
 - `relay` — uses a configurable WebSocket endpoint from `VITE_SIGNALING_URL`.
 
 If `transport=relay` is requested without `VITE_SIGNALING_URL`, the app safely falls back to local mode and explains that in the UI.

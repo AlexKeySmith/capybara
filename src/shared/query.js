@@ -12,6 +12,7 @@ export function parseAppQuery(search = window.location.search) {
     sessionId: sanitizeSessionId(params.get('session')),
     transport: params.get('transport') || DEFAULT_TRANSPORT,
     preferredName: params.get('name') || '',
+    offerToken: params.get('offer') || '',
   };
 }
 

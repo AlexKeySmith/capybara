@@ -4,6 +4,7 @@ export const DEFAULT_FIXTURE = 'classic';
 export const DEFAULT_SEED = 2001;
 export const MAX_REMOTE_PLAYERS = 3;
 export const LOCAL_TRANSPORT = 'local';
+export const PEER_TRANSPORT = 'peer';
 export const RELAY_TRANSPORT = 'relay';
 export const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || '';
 export const DEFAULT_TRANSPORT = SIGNALING_URL ? RELAY_TRANSPORT : LOCAL_TRANSPORT;
