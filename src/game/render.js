@@ -7,6 +7,12 @@ const terrainRowColors = Array.from({ length: ROWS }, (_, y) => {
 const backgroundBandParallax = [-0.08, -0.16, -0.24];
 const backgroundBandColors = ['rgba(82, 131, 255, 0.15)', 'rgba(38, 80, 165, 0.2)', 'rgba(13, 33, 74, 0.32)'];
 const renderCacheBySimulation = new WeakMap();
+const fullTerrainRegion = Object.freeze({
+  minCol: 0,
+  minRow: 0,
+  maxCol: COLS - 1,
+  maxRow: ROWS - 1,
+});
 
 function createCanvasSurface(width, height) {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
@@ -44,18 +50,24 @@ function ensureBackgroundGradient(ctx, viewportHeight, cache) {
   return background;
 }
 
-function ensureTerrainLayer(simulation, cache) {
-  if (cache.terrainCanvas && cache.terrainVersion === simulation.renderVersion) return;
-  const canvas = cache.terrainCanvas ?? createCanvasSurface(WORLD_WIDTH, WORLD_HEIGHT);
-  const layer = canvas.getContext('2d');
-  layer.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+function drawTerrainRegion(layer, simulation, dirtyRegion) {
+  const startCol = dirtyRegion.minCol;
+  const endCol = dirtyRegion.maxCol;
+  const startRow = dirtyRegion.minRow;
+  const endRow = dirtyRegion.maxRow;
+  layer.clearRect(
+    startCol * CELL,
+    startRow * CELL,
+    (endCol - startCol + 1) * CELL,
+    (endRow - startRow + 1) * CELL,
+  );
 
-  for (let y = 0; y < ROWS; y += 1) {
+  for (let y = startRow; y <= endRow; y += 1) {
     const py = y * CELL;
     const rowTerrain = simulation.terrain[y];
     const rowStains = simulation.stains[y];
     layer.fillStyle = terrainRowColors[y];
-    for (let x = 0; x < COLS; x += 1) {
+    for (let x = startCol; x <= endCol; x += 1) {
       if (!rowTerrain[x]) continue;
       const px = x * CELL;
       layer.fillRect(px, py, CELL, CELL);
@@ -67,15 +79,43 @@ function ensureTerrainLayer(simulation, cache) {
       }
     }
   }
-
-  cache.terrainCanvas = canvas;
-  cache.terrainVersion = simulation.renderVersion;
 }
 
-function ensureMinimapLayer(simulation, width, height, cache) {
+function ensureTerrainLayer(simulation, renderInvalidation, cache) {
+  if (cache.terrainCanvas && cache.terrainVersion === renderInvalidation.version) return;
+  const canvas = cache.terrainCanvas ?? createCanvasSurface(WORLD_WIDTH, WORLD_HEIGHT);
+  const layer = canvas.getContext('2d');
+  drawTerrainRegion(layer, simulation, cache.terrainCanvas ? (renderInvalidation.dirtyRegion ?? fullTerrainRegion) : fullTerrainRegion);
+
+  cache.terrainCanvas = canvas;
+  cache.terrainVersion = renderInvalidation.version;
+}
+
+function drawMinimapTerrainRegion(layer, simulation, dirtyRegion, width, height) {
+  const sx = width / WORLD_WIDTH;
+  const sy = height / WORLD_HEIGHT;
+  const cellWidth = Math.max(1, CELL * sx);
+  const cellHeight = Math.max(1, CELL * sy);
+  const clearX = Math.floor(dirtyRegion.minCol * CELL * sx);
+  const clearY = Math.floor(dirtyRegion.minRow * CELL * sy);
+  const clearWidth = Math.max(1, Math.ceil((dirtyRegion.maxCol + 1) * CELL * sx) - clearX + 1);
+  const clearHeight = Math.max(1, Math.ceil((dirtyRegion.maxRow + 1) * CELL * sy) - clearY + 1);
+
+  layer.fillStyle = '#071225';
+  layer.fillRect(clearX, clearY, clearWidth, clearHeight);
+  layer.fillStyle = '#375c9a';
+  for (let y = dirtyRegion.minRow; y <= dirtyRegion.maxRow; y += 1) {
+    for (let x = dirtyRegion.minCol; x <= dirtyRegion.maxCol; x += 1) {
+      if (!simulation.terrain[y][x]) continue;
+      layer.fillRect(x * CELL * sx, y * CELL * sy, cellWidth, cellHeight);
+    }
+  }
+}
+
+function ensureMinimapLayer(simulation, renderInvalidation, width, height, cache) {
   if (
     cache.minimapCanvas
-    && cache.minimapVersion === simulation.renderVersion
+    && cache.minimapVersion === renderInvalidation.version
     && cache.minimapWidth === width
     && cache.minimapHeight === height
   ) {
@@ -83,26 +123,18 @@ function ensureMinimapLayer(simulation, width, height, cache) {
   }
 
   const canvas = cache.minimapCanvas ?? createCanvasSurface(width, height);
+  const sizeChanged = !cache.minimapCanvas || cache.minimapWidth !== width || cache.minimapHeight !== height;
   canvas.width = width;
   canvas.height = height;
   const layer = canvas.getContext('2d');
-  layer.fillStyle = '#071225';
-  layer.fillRect(0, 0, width, height);
-  const sx = width / WORLD_WIDTH;
-  const sy = height / WORLD_HEIGHT;
-  const cellWidth = Math.max(1, CELL * sx);
-  const cellHeight = Math.max(1, CELL * sy);
-
-  layer.fillStyle = '#375c9a';
-  for (let y = 0; y < ROWS; y += 1) {
-    for (let x = 0; x < COLS; x += 1) {
-      if (!simulation.terrain[y][x]) continue;
-      layer.fillRect(x * CELL * sx, y * CELL * sy, cellWidth, cellHeight);
-    }
-  }
+  const dirtyRegion = !sizeChanged
+    && cache.minimapCanvas
+    ? (renderInvalidation.dirtyRegion ?? fullTerrainRegion)
+    : fullTerrainRegion;
+  drawMinimapTerrainRegion(layer, simulation, dirtyRegion, width, height);
 
   cache.minimapCanvas = canvas;
-  cache.minimapVersion = simulation.renderVersion;
+  cache.minimapVersion = renderInvalidation.version;
   cache.minimapWidth = width;
   cache.minimapHeight = height;
 }
@@ -128,7 +160,8 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
   const now = options.now ?? performance.now();
   const performanceProfile = options.performanceProfile ?? {};
   const cache = getRenderCache(simulation);
-  ensureTerrainLayer(simulation, cache);
+  const renderInvalidation = simulation.consumeRenderInvalidation();
+  ensureTerrainLayer(simulation, renderInvalidation, cache);
 
   const background = ensureBackgroundGradient(ctx, viewportHeight, cache);
   ctx.fillStyle = background;
@@ -154,10 +187,10 @@ export function drawSimulation(ctx, minimapCtx, simulation, viewportWidth, viewp
   if (minimapCtx) {
     const minimapIntervalMs = performanceProfile.minimapIntervalMs ?? 0;
     const shouldDrawMinimap = minimapIntervalMs === 0
-      || cache.minimapVersion !== simulation.renderVersion
+      || cache.minimapVersion !== renderInvalidation.version
       || now - cache.lastMinimapDrawAt >= minimapIntervalMs;
     if (shouldDrawMinimap) {
-      drawMinimap(minimapCtx, simulation, viewportWidth, cache);
+      drawMinimap(minimapCtx, simulation, renderInvalidation, viewportWidth, cache);
       cache.lastMinimapDrawAt = now;
       if (diagnostics) diagnostics.minimapDraws += 1;
     } else if (diagnostics) {
@@ -305,10 +338,10 @@ function drawRoundEnd(ctx, viewportWidth, viewportHeight) {
   ctx.textAlign = 'start';
 }
 
-function drawMinimap(ctx, simulation, viewportWidth, cache) {
+function drawMinimap(ctx, simulation, renderInvalidation, viewportWidth, cache) {
   const width = ctx.canvas.width;
   const height = ctx.canvas.height;
-  ensureMinimapLayer(simulation, width, height, cache);
+  ensureMinimapLayer(simulation, renderInvalidation, width, height, cache);
   ctx.drawImage(cache.minimapCanvas, 0, 0);
   const sx = width / WORLD_WIDTH;
   const sy = height / WORLD_HEIGHT;
