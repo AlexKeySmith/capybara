@@ -172,7 +172,7 @@ function drawBackgroundBands(ctx, cameraX, viewportWidth, viewportHeight, perfor
     backgroundBandParallax.length,
   );
   const xStep = performanceProfile.backgroundBandStep ?? 80;
-  const waveAmplitude = performanceProfile.lowPowerMode ? 18 : 24;
+  const waveAmplitude = 24;
   for (let index = 0; index < bandCount; index += 1) {
     const factor = backgroundBandParallax[index];
     ctx.fillStyle = backgroundBandColors[index];

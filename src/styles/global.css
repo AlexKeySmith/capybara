@@ -84,11 +84,6 @@ input:focus-visible {
   mix-blend-mode: soft-light;
 }
 
-.performance-low.scanlines::before {
-  opacity: 0.08;
-  mix-blend-mode: normal;
-}
-
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -239,24 +234,6 @@ input:focus-visible {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(5, 9, 16, 0.58);
   backdrop-filter: blur(14px);
-}
-
-.performance-low .stage-panel,
-.performance-low .sidebar-panel,
-.performance-low .controller-shell,
-.performance-low .overlay-pill {
-  backdrop-filter: none;
-}
-
-.performance-low .stage-panel,
-.performance-low .sidebar-panel,
-.performance-low .controller-shell {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-}
-
-.performance-low .canvas-wrap,
-.performance-low .game-canvas {
-  min-height: 480px;
 }
 
 .sidebar {

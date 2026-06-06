@@ -35,8 +35,6 @@ function createPerformanceProfile(query) {
     minCanvasHeight: lowPowerMode ? 480 : 640,
     maxCanvasHeight: lowPowerMode ? 640 : 820,
     minimapIntervalMs: lowPowerMode ? 180 : 0,
-    backgroundBandCount: lowPowerMode ? 2 : 3,
-    backgroundBandStep: lowPowerMode ? 120 : 80,
   };
 }
 
