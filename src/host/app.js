@@ -16,25 +16,14 @@ import { createMessage, isProtocolMessage, normalizeInputState, normalizeJoinPay
 import { parseAppQuery, syncHostUrl } from '../shared/query.js';
 import { buildControllerUrl, ensureSessionId, shortCode } from '../shared/session.js';
 
-function detectLowPowerMode() {
-  const userAgent = navigator.userAgent || '';
-  const platform = navigator.platform || '';
-  const armDevice = /(arm|aarch64)/i.test(userAgent) || /(arm|aarch64)/i.test(platform);
-  const raspberryPi = /raspberry pi/i.test(userAgent);
-  const lowCoreCount = Number.isFinite(navigator.hardwareConcurrency) && navigator.hardwareConcurrency <= 4;
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-  return raspberryPi || reducedMotion || (armDevice && lowCoreCount);
-}
-
 function createPerformanceProfile(query) {
-  const lowPowerMode = query.lowPowerMode || detectLowPowerMode();
   return {
-    name: lowPowerMode ? 'low' : 'default',
-    lowPowerMode,
-    dprCap: lowPowerMode ? 1 : 2,
-    minCanvasHeight: lowPowerMode ? 480 : 640,
-    maxCanvasHeight: lowPowerMode ? 640 : 820,
-    minimapIntervalMs: lowPowerMode ? 180 : 0,
+    name: query.renderMode || 'webcanvas',
+    mainGameRenderer: 'webcanvas',
+    dprCap: 2,
+    minCanvasHeight: 640,
+    maxCanvasHeight: 820,
+    minimapIntervalMs: 0,
   };
 }
 
@@ -75,7 +64,7 @@ export async function bootstrapHost(root) {
     rafId: 0,
   };
 
-  root.className = `app-shell scanlines${state.performanceProfile.lowPowerMode ? ' performance-low' : ''}`;
+  root.className = 'app-shell scanlines';
   root.dataset.performanceProfile = state.performanceProfile.name;
   root.innerHTML = `
     <div class="layout">
@@ -92,7 +81,7 @@ export async function bootstrapHost(root) {
           </div>
         </div>
         <div class="canvas-wrap">
-          <canvas class="game-canvas" data-testid="host-canvas"></canvas>
+          <canvas class="game-canvas" data-testid="host-canvas" data-renderer="webcanvas"></canvas>
           <div class="canvas-overlay">
             <div class="overlay-stack">
               <div class="overlay-pill" data-testid="host-time">Time: --</div>
@@ -204,7 +193,7 @@ export async function bootstrapHost(root) {
     sessionId,
     transport: query.transport || transport.mode,
     fixture: query.fixture,
-    powerMode: state.performanceProfile.name,
+    renderMode: state.performanceProfile.name,
     seed: query.seed,
     testMode: query.testMode,
   });
