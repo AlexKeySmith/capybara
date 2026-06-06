@@ -3,18 +3,20 @@ import { CapybaraSimulation } from '../game/simulation.js';
 import { resolveFixture } from '../game/fixtures.js';
 import { drawSimulationWebCanvas } from '../game/render.js';
 import { createTransport, describeTransport } from '../network/createTransport.js';
+import { createPeerHostManager } from '../network/peerHostManager.js';
 import {
   APP_NAME,
   APP_TAGLINE,
   DEFAULT_TRANSPORT,
   MAX_REMOTE_PLAYERS,
+  PEER_TRANSPORT,
   REMOTE_HEARTBEAT_MS,
   REMOTE_TIMEOUT_MS,
   STATE_BROADCAST_MS,
 } from '../shared/config.js';
 import { createMessage, isProtocolMessage, normalizeInputState, normalizeJoinPayload } from '../shared/protocol.js';
 import { parseAppQuery, syncHostUrl } from '../shared/query.js';
-import { buildControllerUrl, ensureSessionId, shortCode } from '../shared/session.js';
+import { ensureSessionId, shortCode } from '../shared/session.js';
 
 function createPerformanceProfile(query) {
   return {
@@ -81,6 +83,7 @@ export async function bootstrapHost(root) {
     clientId,
     requestedMode: query.transport || DEFAULT_TRANSPORT,
   });
+  const peerManager = createPeerHostManager({ sessionId });
 
   const state = {
     fixture: fixture.name,
@@ -166,14 +169,21 @@ export async function bootstrapHost(root) {
               <div class="meta-label">Controller URL</div>
               <div class="join-url" data-testid="join-url"></div>
             </div>
-            <div class="qr-frame"><canvas data-testid="join-qr" width="160" height="160"></canvas></div>
+            <div class="qr-frame"><canvas data-testid="join-qr" width="220" height="220"></canvas></div>
             <div class="card join-steps" data-testid="join-steps">
               <div class="meta-label">Arcade quick join</div>
               <ol class="steps-list">
                 <li>Scan QR or open controller URL.</li>
-                <li>Enter call sign and auto-join.</li>
-                <li>Repeat on more phones for P3 and P4.</li>
+                <li>Copy the reply code from the phone into the host.</li>
+                <li>Enter call sign and repeat for more phones.</li>
               </ol>
+              <label class="meta-label" for="join-reply-input">Peer reply code</label>
+              <textarea id="join-reply-input" class="text-input reply-code" data-testid="join-reply-input"></textarea>
+              <div class="helper-text" data-testid="join-reply-status">Waiting for a phone to open the invite.</div>
+              <div class="actions-row">
+                <button type="button" data-action="apply-reply">Link phone</button>
+                <button type="button" data-action="refresh-invite">Refresh invite</button>
+              </div>
             </div>
           </div>
         </section>
@@ -244,8 +254,12 @@ export async function bootstrapHost(root) {
   const attractSeatsEl = root.querySelector('[data-testid="host-seat-indicators"]');
   const copyButton = root.querySelector('[data-action="copy"]');
   const resetButton = root.querySelector('[data-action="reset"]');
+  const joinReplyInputEl = root.querySelector('[data-testid="join-reply-input"]');
+  const joinReplyStatusEl = root.querySelector('[data-testid="join-reply-status"]');
+  const applyReplyButton = root.querySelector('[data-action="apply-reply"]');
+  const refreshInviteButton = root.querySelector('[data-action="refresh-invite"]');
 
-  transportNoteEl.textContent = describeTransport(query.transport || transport.mode);
+  transportNoteEl.textContent = describeTransport(PEER_TRANSPORT);
 
   syncHostUrl({
     sessionId,
@@ -255,13 +269,19 @@ export async function bootstrapHost(root) {
     testMode: query.testMode,
   });
 
-  const controllerUrl = buildControllerUrl(sessionId, query.transport || transport.mode).toString();
-  joinUrlEl.textContent = controllerUrl;
-  await QRCode.toCanvas(qrCanvas, controllerUrl, {
-    width: 160,
-    margin: 1,
-    color: { dark: '#f8d95c', light: '#00000000' },
-  });
+  let controllerUrl = '';
+  const renderInvite = async (statusText = 'Waiting for a phone to open the invite.') => {
+    controllerUrl = await peerManager.createInvite();
+    joinUrlEl.textContent = controllerUrl;
+    joinReplyInputEl.value = '';
+    joinReplyStatusEl.textContent = statusText;
+    await QRCode.toCanvas(qrCanvas, controllerUrl, {
+      width: 220,
+      margin: 1,
+      color: { dark: '#f8d95c', light: '#00000000' },
+    });
+  };
+  await renderInvite();
 
   let attractPrompts = ['SCAN TO JOIN', 'ENTER CALL SIGN', 'P2-P4 READY'];
   let attractPromptIndex = 0;
@@ -353,11 +373,13 @@ export async function bootstrapHost(root) {
     if (!force && now - state.lastStateBroadcast < STATE_BROADCAST_MS) return;
     state.lastStateBroadcast = now;
 
-    transport.send(createMessage('state', {
+    const message = createMessage('state', {
       sessionId,
       targetId: 'all',
       snapshot: state.simulation.getPublicState(),
-    }));
+    });
+    transport.send(message);
+    peerManager.send(message);
   }
 
   function removeTimedOutControllers() {
@@ -381,23 +403,27 @@ export async function bootstrapHost(root) {
         lastSeen: Date.now(),
       });
       state.controllerAssignments.set(message.clientId, slot);
-      transport.send(createMessage('assign', {
+      const response = createMessage('assign', {
         sessionId,
         targetId: message.clientId,
         accepted: true,
         slot,
         controllerName: payload.controllerName,
         snapshot: state.simulation.getPublicState(),
-      }));
+      });
+      transport.send(response);
+      peerManager.send(response);
     } else {
-      transport.send(createMessage('assign', {
+      const response = createMessage('assign', {
         sessionId,
         targetId: message.clientId,
         accepted: false,
         slot: -1,
         controllerName: payload.controllerName,
         reason: 'Arena full',
-      }));
+      });
+      transport.send(response);
+      peerManager.send(response);
     }
     renderRoster(true, performance.now());
     broadcastState(true);
@@ -418,9 +444,13 @@ export async function bootstrapHost(root) {
     broadcastState(true);
   }
 
-  transport.subscribe((message) => {
+  const handleTransportMessage = (message) => {
     if (!isProtocolMessage(message)) return;
     switch (message.type) {
+      case 'transport-open':
+        joinReplyStatusEl.textContent = 'Peer link live. Preparing the next invite...';
+        void renderInvite('Invite refreshed for the next phone.');
+        break;
       case 'join':
         handleJoin(message);
         break;
@@ -439,7 +469,10 @@ export async function bootstrapHost(root) {
       default:
         break;
     }
-  });
+  };
+
+  transport.subscribe(handleTransportMessage);
+  peerManager.subscribe(handleTransportMessage);
 
   const keyBindings = {
     ArrowLeft: 'left',
@@ -482,6 +515,26 @@ export async function bootstrapHost(root) {
     }
     renderRoster(true, performance.now());
     broadcastState(true);
+  });
+  applyReplyButton.addEventListener('click', async () => {
+    const answerToken = joinReplyInputEl.value.trim();
+    if (!answerToken) {
+      joinReplyStatusEl.textContent = 'Paste a reply code from the phone first.';
+      return;
+    }
+    applyReplyButton.disabled = true;
+    try {
+      await peerManager.applyAnswer(answerToken);
+      joinReplyStatusEl.textContent = 'Reply accepted. Waiting for the phone to finish linking.';
+      joinReplyInputEl.value = '';
+    } catch (error) {
+      joinReplyStatusEl.textContent = error instanceof Error ? error.message : 'Could not apply that reply code.';
+    } finally {
+      applyReplyButton.disabled = false;
+    }
+  });
+  refreshInviteButton.addEventListener('click', () => {
+    void renderInvite('Invite refreshed. Scan the new QR on the next phone.');
   });
 
   await transport.connect();
@@ -577,5 +630,6 @@ export async function bootstrapHost(root) {
     cancelAnimationFrame(state.rafId);
     transport.send(createMessage('disconnect', { sessionId }));
     transport.close();
+    peerManager.close();
   }, { once: true });
 }

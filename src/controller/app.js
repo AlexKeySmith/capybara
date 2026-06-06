@@ -31,6 +31,7 @@ export async function bootstrapController(root) {
     role: 'controller',
     clientId,
     requestedMode: query.transport || DEFAULT_TRANSPORT,
+    offerToken: query.offerToken,
   });
 
   const state = {
@@ -73,6 +74,15 @@ export async function bootstrapController(root) {
           <div class="helper-text">Names are sanitized before entering the roster. Session GUIDs are validated before connecting.</div>
         </div>
 
+        <div class="controller-card" data-testid="controller-reply-card" hidden>
+          <div class="meta-label">Peer reply code</div>
+          <textarea class="text-input reply-code" data-testid="controller-reply-token" readonly></textarea>
+          <div class="helper-text" data-testid="controller-reply-help">Return this reply code to the host to finish the peer-to-peer link.</div>
+          <div class="actions-row">
+            <button type="button" data-action="copy-reply">Copy reply code</button>
+          </div>
+        </div>
+
         <div class="controller-card">
           <div class="info-grid">
             <div>
@@ -112,8 +122,13 @@ export async function bootstrapController(root) {
   const statusEl = root.querySelector('[data-testid="controller-status"]');
   const slotEl = root.querySelector('[data-testid="controller-slot"]');
   const rosterEl = root.querySelector('[data-testid="controller-roster"]');
+  const replyCardEl = root.querySelector('[data-testid="controller-reply-card"]');
+  const replyTokenEl = root.querySelector('[data-testid="controller-reply-token"]');
+  const copyReplyButton = root.querySelector('[data-action="copy-reply"]');
+  let hasSentJoin = false;
 
   const sendJoin = () => {
+    if (transport.mode === 'peer' && !transport.isReady?.()) return;
     state.name = safePlayerName(nameInput.value, 'Ranger');
     localStorage.setItem('capybara.controllerName', state.name);
     transport.send(createMessage('join', {
@@ -121,6 +136,7 @@ export async function bootstrapController(root) {
       controllerName: state.name,
       ready: state.input.ready,
     }));
+    hasSentJoin = true;
   };
 
   const setStatus = (text, tone = 'status-good') => {
@@ -130,6 +146,7 @@ export async function bootstrapController(root) {
   };
 
   const sendInput = () => {
+    if (transport.mode === 'peer' && !transport.isReady?.()) return;
     transport.send(createMessage('input', {
       sessionId,
       input: normalizeInputState(state.input),
@@ -163,10 +180,24 @@ export async function bootstrapController(root) {
   });
 
   nameInput.addEventListener('change', sendJoin);
+  copyReplyButton.addEventListener('click', async () => {
+    if (!replyTokenEl.value) return;
+    await navigator.clipboard?.writeText(replyTokenEl.value);
+    copyReplyButton.textContent = 'Copied';
+    window.setTimeout(() => {
+      copyReplyButton.textContent = 'Copy reply code';
+    }, 1200);
+  });
 
   transport.subscribe((message) => {
     if (message.targetId && message.targetId !== clientId && message.targetId !== 'all') return;
     switch (message.type) {
+      case 'transport-open':
+        replyCardEl.hidden = true;
+        setStatus('Linking…', 'status-warning');
+        sendJoin();
+        sendInput();
+        break;
       case 'assign': {
         const assignment = normalizeAssignment(message);
         if (assignment.accepted) {
@@ -200,13 +231,19 @@ export async function bootstrapController(root) {
   });
 
   await transport.connect();
-  setStatus('Joining…', 'status-warning');
-  sendJoin();
-  sendInput();
+  if (transport.mode === 'peer') {
+    replyCardEl.hidden = false;
+    replyTokenEl.value = transport.getPendingAnswer?.() || '';
+    setStatus('Return reply code to host', 'status-warning');
+  } else {
+    setStatus('Joining…', 'status-warning');
+    sendJoin();
+    sendInput();
+  }
 
   const inputInterval = window.setInterval(sendInput, INPUT_SEND_MS);
   const heartbeatInterval = window.setInterval(() => {
-    if (state.assignedSlot === null) sendJoin();
+    if (state.assignedSlot === null && (!hasSentJoin || transport.mode !== 'peer' || transport.isReady?.())) sendJoin();
     transport.send(createMessage('heartbeat', { sessionId }));
   }, REMOTE_HEARTBEAT_MS);
 
