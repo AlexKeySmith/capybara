@@ -38,6 +38,7 @@ export async function bootstrapHost(root) {
     simulation: new CapybaraSimulation({ seed: query.seed, fixture: query.fixture }),
     peers: new Map(),
     controllerAssignments: new Map(),
+    rosterSignature: '',
     lastStateBroadcast: 0,
     rafId: 0,
   };
@@ -182,8 +183,11 @@ export async function bootstrapHost(root) {
     color: { dark: '#f8d95c', light: '#00000000' },
   });
 
-  function renderRoster() {
+  function renderRoster(force = false) {
     const roster = state.simulation.getRosterSnapshot();
+    const signature = roster.map((player) => `${player.slot}:${player.controllerId || '-'}:${player.isBot ? 1 : 0}:${player.hp}:${player.name}`).join('|');
+    if (!force && signature === state.rosterSignature) return;
+    state.rosterSignature = signature;
     rosterList.innerHTML = '';
     for (const player of roster) {
       const item = document.createElement('li');
@@ -265,7 +269,7 @@ export async function bootstrapHost(root) {
         reason: 'Arena full',
       }));
     }
-    renderRoster();
+    renderRoster(true);
     broadcastState(true);
   }
 
@@ -280,7 +284,7 @@ export async function bootstrapHost(root) {
     state.peers.delete(message.clientId);
     state.controllerAssignments.delete(message.clientId);
     state.simulation.releaseController(message.clientId);
-    renderRoster();
+    renderRoster(true);
     broadcastState(true);
   }
 
@@ -346,21 +350,21 @@ export async function bootstrapHost(root) {
       const slot = state.simulation.assignController(controllerId, peer.name);
       peer.slot = slot;
     }
-    renderRoster();
+    renderRoster(true);
     broadcastState(true);
   });
 
   await transport.connect();
-  renderRoster();
+  renderRoster(true);
 
   let lastFrame = performance.now();
+  const minimapCtx = minimap.getContext('2d');
   const renderFrame = (time) => {
     const delta = Math.min(64, time - lastFrame);
     lastFrame = time;
     const viewportWidth = canvas.parentElement.clientWidth;
     const viewportHeight = Math.max(640, Math.min(window.innerHeight - 120, 820));
     const ctx = resizeCanvas(canvas, viewportWidth, viewportHeight);
-    const minimapCtx = minimap.getContext('2d');
 
     removeTimedOutControllers();
 
